@@ -1,0 +1,7 @@
+{
+	// SvelteKit 3 memakai "extends": "$app/tsconfig" yang butuh TypeScript baru.
+	// Pakai TypeScript dari proyek, bukan bawaan VS Code, agar editor tidak
+	// melaporkan "Cannot find module" palsu pada alias #lib dan paket npm.
+	"typescript.tsdk": "frontend/node_modules/typescript/lib",
+	"typescript.enablePromptUseWorkspaceTsdk": true
+}

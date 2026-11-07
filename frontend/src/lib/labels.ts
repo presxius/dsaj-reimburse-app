@@ -27,15 +27,15 @@ export const STATUS_LABEL: Record<Status, string> = {
 };
 
 export const STATUS_COLOR: Record<Status, string> = {
-	draft: 'bg-slate-100 text-slate-700',
-	submitted: 'bg-sky-100 text-sky-800',
-	under_review: 'bg-indigo-100 text-indigo-800',
-	revision_required: 'bg-amber-100 text-amber-800',
-	rejected: 'bg-red-100 text-red-800',
-	pending_approval: 'bg-violet-100 text-violet-800',
-	approved: 'bg-teal-100 text-teal-800',
-	processing_payment: 'bg-orange-100 text-orange-800',
-	paid: 'bg-green-100 text-green-800'
+	draft: 'bg-subtle text-muted',
+	submitted: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
+	under_review: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+	revision_required: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+	rejected: 'bg-red-500/10 text-red-700 dark:text-red-300',
+	pending_approval: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
+	approved: 'bg-accent-soft text-accent',
+	processing_payment: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
+	paid: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
 };
 
 export const ACTION_LABEL: Record<Action, string> = {

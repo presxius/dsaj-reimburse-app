@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
 	import { untrack } from 'svelte';
+	import UploadSimple from 'phosphor-svelte/lib/UploadSimple';
 	import { api } from '#lib/services/api.ts';
 	import { formatRupiah } from '#lib/labels.ts';
 	import { notify, notifyError } from '#lib/session.svelte.ts';
@@ -109,7 +110,7 @@
 
 {#snippet ocrTag(key: string)}
 	{#if fromOcr[key]}
-		<span class="ml-1 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700"
+		<span class="ml-1 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent"
 			>dari OCR</span
 		>
 	{/if}
@@ -124,22 +125,30 @@
 >
 	<!-- Kolom kiri: struk -->
 	<div class="card space-y-4">
-		<h2 class="font-semibold text-slate-800">1. Bukti transaksi</h2>
-		<label class="flex items-center gap-2 text-sm text-slate-600">
+		<h2 class="font-semibold text-fg">1. Bukti transaksi</h2>
+		<label class="flex items-center gap-2 text-sm text-muted">
 			<input type="checkbox" bind:checked={useOcr} />
 			Baca struk otomatis dengan OCR
 		</label>
-		<input
-			type="file"
-			accept="image/jpeg,image/png"
-			class="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-brand-700"
-			onchange={onFile}
-			disabled={uploading}
-		/>
-		<p class="text-xs text-slate-500">Format JPG/JPEG/PNG, maksimal 5 MB.</p>
+		<label
+			class="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-line px-4 py-8 text-center transition-colors hover:border-accent hover:bg-accent-soft focus-within:border-accent {uploading
+				? 'pointer-events-none opacity-60'
+				: ''}"
+		>
+			<UploadSimple size={24} class="text-accent" />
+			<span class="text-sm font-medium">{receipt ? 'Ganti foto struk' : 'Pilih foto struk'}</span>
+			<span class="text-xs text-muted">JPG, JPEG, atau PNG, maksimal 5 MB</span>
+			<input
+				type="file"
+				accept="image/jpeg,image/png"
+				class="sr-only"
+				onchange={onFile}
+				disabled={uploading}
+			/>
+		</label>
 
 		{#if uploading}
-			<p class="text-sm text-brand-600">{useOcr ? 'Mengunggah dan membaca struk...' : 'Mengunggah...'}</p>
+			<p class="text-sm text-accent">{useOcr ? 'Mengunggah dan membaca struk...' : 'Mengunggah...'}</p>
 		{/if}
 
 		{#if previewUrl}
@@ -149,27 +158,27 @@
 		{#if ocr}
 			<div
 				class="rounded-lg border p-3 text-sm {ocr.status === 'completed'
-					? 'border-violet-200 bg-violet-50'
-					: 'border-amber-200 bg-amber-50'}"
+					? 'border-line bg-subtle'
+					: 'border-warn/30 bg-warn/10'}"
 			>
 				{#if ocr.status === 'completed'}
-					<p class="mb-2 font-medium text-violet-800">Hasil pembacaan OCR (draft)</p>
+					<p class="mb-2 font-medium text-fg">Hasil pembacaan OCR (draft)</p>
 					<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-						<dt class="text-slate-500">Merchant</dt>
+						<dt class="text-muted">Merchant</dt>
 						<dd>{ocr.merchant ?? 'â€” tidak terbaca'}</dd>
-						<dt class="text-slate-500">Tanggal</dt>
+						<dt class="text-muted">Tanggal</dt>
 						<dd>{ocr.transaction_date ?? 'â€” tidak terbaca'}</dd>
-						<dt class="text-slate-500">Total</dt>
+						<dt class="text-muted">Total</dt>
 						<dd>{ocr.total_amount != null ? formatRupiah(ocr.total_amount) : 'â€” tidak terbaca'}</dd>
 					</dl>
 					{#if ocr.raw_text}
 						<details class="mt-2">
-							<summary class="cursor-pointer text-xs text-slate-500">Lihat teks mentah</summary>
+							<summary class="cursor-pointer text-xs text-muted">Lihat teks mentah</summary>
 							<pre class="mt-1 max-h-40 overflow-auto text-xs whitespace-pre-wrap">{ocr.raw_text}</pre>
 						</details>
 					{/if}
 				{:else}
-					<p class="text-amber-800">
+					<p class="text-fg">
 						OCR tidak berhasil: {ocr.error ?? 'gambar tidak dapat diproses'}. Silakan isi formulir
 						secara manual.
 					</p>
@@ -180,7 +189,7 @@
 
 	<!-- Kolom kanan: data pengajuan -->
 	<div class="card space-y-4">
-		<h2 class="font-semibold text-slate-800">2. Detail pengeluaran</h2>
+		<h2 class="font-semibold text-fg">2. Detail pengeluaran</h2>
 		<div>
 			<span class="label">Kategori</span>
 			<div class="flex gap-2">
@@ -188,8 +197,8 @@
 					<label
 						class="flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-sm {category ===
 						value
-							? 'border-brand-600 bg-brand-50 font-medium text-brand-700'
-							: 'border-slate-300'}"
+							? 'border-accent bg-accent-soft font-medium text-accent'
+							: 'border-line'}"
 					>
 						<input type="radio" class="sr-only" bind:group={category} {value} />
 						{text}
@@ -218,7 +227,7 @@
 		</div>
 
 		{#if needsConfirm}
-			<label class="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+			<label class="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-fg">
 				<input type="checkbox" class="mt-0.5" bind:checked={ocrConfirmed} />
 				Saya sudah membandingkan data di atas dengan struk asli dan memastikan merchant, tanggal, dan
 				nominal sudah benar.

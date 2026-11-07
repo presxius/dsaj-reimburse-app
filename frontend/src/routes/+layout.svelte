@@ -6,29 +6,66 @@
 	import { page } from '$app/state';
 	import { ROLE_LABEL } from '#lib/labels.ts';
 	import { api } from '#lib/services/api.ts';
-	import { auth, notifyError } from '#lib/session.svelte.ts';
+	import { auth, notify, notifyError } from '#lib/session.svelte.ts';
+	import { ALL_ROLES, canAccess } from '#lib/access.ts';
 	import type { Role, User } from '#lib/types/index.ts';
+	import { untrack, type Component } from 'svelte';
 	import type { LayoutProps } from './$types';
+	import SquaresFour from 'phosphor-svelte/lib/SquaresFour';
+	import PlusCircle from 'phosphor-svelte/lib/PlusCircle';
+	import ClockCounterClockwise from 'phosphor-svelte/lib/ClockCounterClockwise';
+	import ClipboardText from 'phosphor-svelte/lib/ClipboardText';
+	import CheckSquare from 'phosphor-svelte/lib/CheckSquare';
+	import Wallet from 'phosphor-svelte/lib/Wallet';
+	import Stack from 'phosphor-svelte/lib/Stack';
+	import ChartBar from 'phosphor-svelte/lib/ChartBar';
+	import UsersThree from 'phosphor-svelte/lib/UsersThree';
+	import ListMagnifyingGlass from 'phosphor-svelte/lib/ListMagnifyingGlass';
+	import UserCircle from 'phosphor-svelte/lib/UserCircle';
+	import Sun from 'phosphor-svelte/lib/Sun';
+	import Moon from 'phosphor-svelte/lib/Moon';
+	import SignOut from 'phosphor-svelte/lib/SignOut';
+	import List from 'phosphor-svelte/lib/List';
+	import X from 'phosphor-svelte/lib/X';
 
 	let { children }: LayoutProps = $props();
 	let menuOpen = $state(false);
+	let theme = $state<'light' | 'dark'>('light');
 
-	const NAV: { href: string; label: string; roles: Role[] }[] = [
-		{ href: '/dashboard', label: 'Dashboard', roles: ['employee', 'admin_transport', 'admin_consumption', 'approver', 'finance', 'super_admin'] },
-		{ href: '/reimburse/new', label: 'Ajukan Reimburse', roles: ['employee'] },
-		{ href: '/reimburse', label: 'Riwayat Pengajuan', roles: ['employee'] },
-		{ href: '/verification', label: 'Verifikasi', roles: ['admin_transport', 'admin_consumption'] },
-		{ href: '/approval', label: 'Persetujuan', roles: ['approver'] },
-		{ href: '/finance', label: 'Pembayaran', roles: ['finance'] },
-		{ href: '/reimburse', label: 'Semua Pengajuan', roles: ['super_admin'] },
-		{ href: '/reports', label: 'Laporan', roles: ['admin_transport', 'admin_consumption', 'finance', 'super_admin'] },
-		{ href: '/users', label: 'Pengguna & Departemen', roles: ['super_admin'] },
-		{ href: '/activity', label: 'Log Aktivitas', roles: ['super_admin'] },
-		{ href: '/profile', label: 'Profil', roles: ['employee', 'admin_transport', 'admin_consumption', 'approver', 'finance', 'super_admin'] }
+	const ALL = ALL_ROLES;
+	// svelte-ignore non_reactive_update
+	const NAV: { href: string; label: string; icon: Component<any>; roles: Role[] }[] = [
+		{ href: '/dashboard', label: 'Dashboard', icon: SquaresFour, roles: ALL },
+		{ href: '/reimburse/new', label: 'Ajukan Reimburse', icon: PlusCircle, roles: ['employee'] },
+		{ href: '/reimburse', label: 'Riwayat Pengajuan', icon: ClockCounterClockwise, roles: ['employee'] },
+		{ href: '/verification', label: 'Verifikasi', icon: ClipboardText, roles: ['admin_transport', 'admin_consumption'] },
+		{ href: '/approval', label: 'Persetujuan', icon: CheckSquare, roles: ['approver'] },
+		{ href: '/finance', label: 'Pembayaran', icon: Wallet, roles: ['finance'] },
+		{ href: '/reimburse', label: 'Semua Pengajuan', icon: Stack, roles: ['super_admin'] },
+		{ href: '/reports', label: 'Laporan', icon: ChartBar, roles: ['admin_transport', 'admin_consumption', 'finance', 'super_admin'] },
+		{ href: '/users', label: 'Pengguna', icon: UsersThree, roles: ['super_admin'] },
+		{ href: '/activity', label: 'Log Aktivitas', icon: ListMagnifyingGlass, roles: ['super_admin'] },
+		{ href: '/profile', label: 'Profil', icon: UserCircle, roles: ALL }
 	];
 
 	const isLogin = $derived(page.url.pathname === '/login');
 	const nav = $derived(NAV.filter((n) => auth.user && n.roles.includes(auth.user.role)));
+	// Halaman di luar kewenangan role tidak dirender sama sekali (lihat access.ts).
+	const allowed = $derived(!auth.user || canAccess(page.url.pathname, auth.user.role));
+
+	$effect(() => {
+		theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+	});
+
+	function toggleTheme() {
+		theme = theme === 'dark' ? 'light' : 'dark';
+		document.documentElement.dataset.theme = theme;
+		try {
+			localStorage.setItem('theme', theme);
+		} catch {
+			/* penyimpanan diblokir; tema tetap berlaku untuk sesi ini */
+		}
+	}
 
 	$effect(() => {
 		if (auth.loaded) return;
@@ -43,6 +80,11 @@
 		if (!auth.loaded) return;
 		if (!auth.user && !isLogin) goto('/login');
 		else if (auth.user && isLogin) goto('/dashboard');
+		else if (auth.user && !allowed) {
+			// notify menulis ke state toast; jangan dilacak efek ini agar tidak terpicu berulang.
+			untrack(() => notify('Anda tidak memiliki akses ke halaman tersebut.', 'error'));
+			goto('/dashboard', { replace: true });
+		}
 	});
 
 	function isActive(href: string) {
@@ -69,49 +111,93 @@
 
 <Toasts />
 
+{#snippet themeButton()}
+	<button
+		class="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-subtle hover:text-fg"
+		onclick={toggleTheme}
+		aria-label={theme === 'dark' ? 'Gunakan tema terang' : 'Gunakan tema gelap'}
+	>
+		{#if theme === 'dark'}<Sun size={18} />{:else}<Moon size={18} />{/if}
+	</button>
+{/snippet}
+
 {#if !auth.loaded}
-	<div class="grid min-h-screen place-items-center text-slate-400">Memuat...</div>
+	<div class="grid min-h-[100dvh] place-items-center text-faint">Memuat...</div>
 {:else if isLogin}
 	{@render children()}
 {:else if auth.user}
-	<div class="min-h-screen bg-slate-50 lg:flex">
+	<div class="min-h-[100dvh] lg:flex">
 		<!-- Bar atas (mobile) -->
-		<header class="flex items-center justify-between bg-brand-900 px-4 py-3 text-white lg:hidden">
-			<span class="font-semibold">Reimburse DSAJ</span>
-			<button class="rounded px-2 py-1 hover:bg-white/10" onclick={() => (menuOpen = !menuOpen)}
-				aria-label="Menu">☰</button
-			>
+		<header class="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface px-4 py-2.5 lg:hidden">
+			<span class="font-semibold tracking-tight">Reimburse</span>
+			<div class="flex items-center gap-1">
+				{@render themeButton()}
+				<button
+					class="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-subtle"
+					onclick={() => (menuOpen = !menuOpen)}
+					aria-label={menuOpen ? 'Tutup menu' : 'Buka menu'}
+					aria-expanded={menuOpen}
+				>
+					{#if menuOpen}<X size={20} />{:else}<List size={20} />{/if}
+				</button>
+			</div>
 		</header>
 
 		<aside
-			class="{menuOpen ? 'block' : 'hidden'} w-full shrink-0 bg-brand-900 text-slate-200 lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-col"
+			class="{menuOpen ? 'flex' : 'hidden'} z-20 w-full shrink-0 flex-col border-r border-line bg-surface lg:sticky lg:top-0 lg:flex lg:h-[100dvh] lg:w-60"
 		>
-			<div class="hidden px-5 py-5 lg:block">
-				<div class="text-lg font-bold text-white">Reimburse DSAJ</div>
-				<div class="text-xs text-slate-400">PT. Duta Sarana Abadi Jaya</div>
+			<div class="hidden items-center justify-between px-5 py-5 lg:flex">
+				<div>
+					<div class="font-semibold tracking-tight">Reimburse</div>
+					<div class="text-xs text-faint">PT. Duta Sarana Abadi Jaya</div>
+				</div>
+				{@render themeButton()}
 			</div>
-			<nav class="flex-1 space-y-1 px-3 py-2">
+
+			<nav class="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
 				{#each nav as item (item.label)}
+					{@const active = isActive(item.href)}
 					<a
 						href={item.href}
 						onclick={() => (menuOpen = false)}
-						class="block rounded-lg px-3 py-2 text-sm {isActive(item.href)
-							? 'bg-white/15 font-medium text-white'
-							: 'hover:bg-white/10'}">{item.label}</a
+						aria-current={active ? 'page' : undefined}
+						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors {active
+							? 'bg-subtle font-medium text-fg'
+							: 'text-muted hover:bg-subtle hover:text-fg'}"
 					>
+						<item.icon size={18} weight={active ? 'fill' : 'regular'} class={active ? 'text-accent' : ''} />
+						{item.label}
+					</a>
 				{/each}
 			</nav>
-			<div class="border-t border-white/10 px-5 py-4 text-sm">
-				<div class="font-medium text-white">{auth.user.name}</div>
-				<div class="text-xs text-slate-400">{ROLE_LABEL[auth.user.role]}</div>
-				<button class="mt-3 text-xs text-slate-300 underline hover:text-white" onclick={logout}
-					>Keluar</button
-				>
+
+			<div class="border-t border-line p-3">
+				<div class="flex items-center gap-3 rounded-lg px-2 py-1.5">
+					<div class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
+						{auth.user.name.slice(0, 1)}
+					</div>
+					<div class="min-w-0 flex-1">
+						<div class="truncate text-sm font-medium">{auth.user.name}</div>
+						<div class="truncate text-xs text-faint">{ROLE_LABEL[auth.user.role]}</div>
+					</div>
+					<button
+						class="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-subtle hover:text-fg"
+						onclick={logout}
+						aria-label="Keluar"
+						title="Keluar"
+					>
+						<SignOut size={18} />
+					</button>
+				</div>
 			</div>
 		</aside>
 
-		<main class="min-w-0 flex-1 p-4 lg:p-8">
-			{@render children()}
+		<main class="min-w-0 flex-1 px-4 py-6 lg:px-10 lg:py-8">
+			<div class="mx-auto max-w-6xl">
+				{#if allowed}
+					{@render children()}
+				{/if}
+			</div>
 		</main>
 	</div>
 {/if}

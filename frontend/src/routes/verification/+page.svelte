@@ -6,8 +6,8 @@
 	const category = auth.user?.role === 'admin_transport' ? 'transport' : 'consumption';
 </script>
 
-<h1 class="mb-1 text-2xl font-bold text-slate-800">Verifikasi Pengajuan</h1>
-<p class="mb-6 text-sm text-slate-500">Kategori {CATEGORY_LABEL[category]}</p>
+<h1 class="mb-1 text-2xl font-semibold tracking-tight">Verifikasi Pengajuan</h1>
+<p class="mb-6 text-sm text-muted">Kategori {CATEGORY_LABEL[category]}</p>
 
 <ReimbursementTable
 	showCategoryFilter={false}

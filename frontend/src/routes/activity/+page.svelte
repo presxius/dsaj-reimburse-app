@@ -14,7 +14,7 @@
 	});
 </script>
 
-<h1 class="mb-6 text-2xl font-bold text-slate-800">Log Aktivitas</h1>
+<h1 class="mb-6 text-2xl font-semibold tracking-tight">Log Aktivitas</h1>
 <div class="card overflow-x-auto p-0">
 	<table class="table-base">
 		<thead>
@@ -26,7 +26,7 @@
 					<td class="whitespace-nowrap">{formatDate(l.created_at, true)}</td>
 					<td>{l.user ?? '-'}</td>
 					<td><code class="text-xs">{l.action}</code></td>
-					<td class="text-slate-600">{l.detail ?? ''}</td>
+					<td class="text-muted">{l.detail ?? ''}</td>
 				</tr>
 			{/each}
 		</tbody>

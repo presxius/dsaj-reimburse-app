@@ -1,45 +1,140 @@
 ﻿@import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
-@theme {
-	--color-brand-50: #eff6ff;
-	--color-brand-100: #dbeafe;
-	--color-brand-600: #1d4ed8;
-	--color-brand-700: #1e40af;
-	--color-brand-900: #172554;
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/*
+ * Palet: netral dingin + satu aksen teal.
+ * Warna lain hanya dipakai untuk makna (status), bukan dekorasi.
+ * Radius: kontrol 8px, kartu 12px, badge pill.
+ */
+:root {
+	--bg: #f4f5f7;
+	--surface: #fbfbfc;
+	--subtle: #eef0f3;
+	--line: #e1e4e9;
+	--fg: #15181d;
+	--muted: #5b6370;
+	--faint: #8a919c;
+	--accent: #0f766e;
+	--accent-hover: #115e59;
+	--accent-soft: #e3f2ef;
+	--on-accent: #f4fbfa;
+	--danger: #b42318;
+	--danger-hover: #912018;
+	--warn: #a15c07;
+	--warn-hover: #854a06;
+	color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+	--bg: #0d0f12;
+	--surface: #14171b;
+	--subtle: #1b1f24;
+	--line: #262b32;
+	--fg: #e7e9ec;
+	--muted: #9aa2ad;
+	--faint: #6d7480;
+	--accent: #2dd4bf;
+	--accent-hover: #5eead4;
+	--accent-soft: #11302c;
+	--on-accent: #04201c;
+	--danger: #f0645a;
+	--danger-hover: #f58b83;
+	--warn: #e9a23b;
+	--warn-hover: #f0b861;
+	color-scheme: dark;
+}
+
+@theme inline {
+	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--color-bg: var(--bg);
+	--color-surface: var(--surface);
+	--color-subtle: var(--subtle);
+	--color-line: var(--line);
+	--color-fg: var(--fg);
+	--color-muted: var(--muted);
+	--color-faint: var(--faint);
+	--color-accent: var(--accent);
+	--color-accent-hover: var(--accent-hover);
+	--color-accent-soft: var(--accent-soft);
+	--color-on-accent: var(--on-accent);
+	--color-danger: var(--danger);
+	--color-danger-hover: var(--danger-hover);
+	--color-warn: var(--warn);
+	--color-warn-hover: var(--warn-hover);
+}
+
+@layer base {
+	html {
+		font-size: 14px;
+	}
+	body {
+		background: var(--bg);
+		color: var(--fg);
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		font-feature-settings: 'cv11', 'ss01';
+	}
+	input[type='checkbox'],
+	input[type='radio'] {
+		accent-color: var(--accent);
+	}
+	:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+	::selection {
+		background: var(--accent-soft);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		* {
+			transition: none !important;
+			animation: none !important;
+		}
+	}
 }
 
 @layer components {
 	.card {
-		@apply rounded-xl border border-slate-200 bg-white p-5 shadow-sm;
+		@apply rounded-xl border border-line bg-surface p-5;
 	}
 	.btn {
-		@apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50;
+		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 select-none active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
 	}
 	.btn-primary {
-		@apply bg-brand-600 text-white hover:bg-brand-700;
+		@apply bg-accent text-on-accent hover:bg-accent-hover;
 	}
 	.btn-secondary {
-		@apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+		@apply border border-line bg-surface text-fg hover:bg-subtle;
 	}
 	.btn-danger {
-		@apply bg-red-600 text-white hover:bg-red-700;
+		@apply bg-danger text-white hover:bg-danger-hover;
 	}
 	.btn-warning {
-		@apply bg-amber-500 text-white hover:bg-amber-600;
+		@apply bg-warn text-white hover:bg-warn-hover;
 	}
 	.input {
-		@apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:ring-2 focus:ring-brand-100 focus:outline-none;
+		@apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg transition-colors placeholder:text-faint hover:border-faint focus:border-accent focus:outline-none;
 	}
 	.label {
-		@apply mb-1 block text-sm font-medium text-slate-700;
+		@apply mb-1.5 block text-xs font-medium text-muted;
 	}
 	.table-base {
 		@apply w-full text-left text-sm;
 	}
 	.table-base th {
-		@apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold tracking-wide text-slate-500 uppercase;
+		@apply border-b border-line px-4 py-2.5 text-xs font-medium text-muted;
 	}
 	.table-base td {
-		@apply border-b border-slate-100 px-3 py-2;
+		@apply border-b border-line/60 px-4 py-3;
+	}
+	.table-base tbody tr:last-child td {
+		@apply border-b-0;
+	}
+	.num {
+		font-variant-numeric: tabular-nums;
 	}
 }

@@ -20,14 +20,14 @@
 	);
 </script>
 
-<h1 class="mb-2 text-2xl font-bold text-slate-800">Perbaiki Pengajuan {item?.code ?? ''}</h1>
+<h1 class="mb-2 text-2xl font-semibold tracking-tight">Perbaiki Pengajuan {item?.code ?? ''}</h1>
 
 {#if item}
 	{#if !['draft', 'revision_required'].includes(item.status)}
-		<p class="card text-sm text-slate-600">Pengajuan ini tidak dapat diubah lagi.</p>
+		<p class="card text-sm text-muted">Pengajuan ini tidak dapat diubah lagi.</p>
 	{:else}
 		{#if lastNote}
-			<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+			<div class="mb-6 rounded-lg border border-warn/30 bg-warn/10 p-4 text-sm text-fg">
 				<strong>Catatan perbaikan:</strong>
 				{lastNote}
 			</div>

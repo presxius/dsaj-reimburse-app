@@ -48,12 +48,12 @@
 
 <div class="card p-0">
 	{#if tabs}
-		<div class="flex gap-1 overflow-x-auto border-b border-slate-200 px-3 pt-3">
+		<div class="flex gap-1 overflow-x-auto border-b border-line px-3 pt-3">
 			{#each tabs as t, i (t.label)}
 				<button
 					class="rounded-t-lg px-3 py-2 text-sm font-medium whitespace-nowrap {tab === i
-						? 'border-b-2 border-brand-600 text-brand-700'
-						: 'text-slate-500 hover:text-slate-700'}"
+						? 'border-b-2 border-accent text-accent'
+						: 'text-muted hover:text-fg'}"
 					onclick={() => (tab = i)}>{t.label}</button
 				>
 			{/each}
@@ -94,27 +94,27 @@
 			</thead>
 			<tbody>
 				{#if loading}
-					<tr><td colspan="7" class="py-8 text-center text-slate-400">Memuat...</td></tr>
+					<tr><td colspan="7" class="py-8 text-center text-faint">Memuat...</td></tr>
 				{:else if items.length === 0}
-					<tr><td colspan="7" class="py-8 text-center text-slate-400">Tidak ada data.</td></tr>
+					<tr><td colspan="7" class="py-8 text-center text-faint">Tidak ada data.</td></tr>
 				{:else}
 					{#each items as r (r.id)}
-						<tr class="hover:bg-slate-50">
+						<tr class="hover:bg-subtle">
 							<td>
-								<a class="font-medium text-brand-600 hover:underline" href="/reimburse/{r.id}"
+								<a class="font-medium text-accent hover:underline" href="/reimburse/{r.id}"
 									>{r.code}</a
 								>
 							</td>
 							{#if showEmployee}
 								<td>
 									<div>{r.employee.name}</div>
-									<div class="text-xs text-slate-400">{r.employee.department ?? ''}</div>
+									<div class="text-xs text-faint">{r.employee.department ?? ''}</div>
 								</td>
 							{/if}
 							<td>{CATEGORY_LABEL[r.category]}</td>
 							<td class="whitespace-nowrap">{formatDate(r.transaction_date)}</td>
 							<td class="max-w-xs truncate" title={r.description}>{r.description}</td>
-							<td class="text-right whitespace-nowrap">{formatRupiah(r.amount)}</td>
+							<td class="num text-right whitespace-nowrap">{formatRupiah(r.amount)}</td>
 							<td><StatusBadge status={r.status} /></td>
 						</tr>
 					{/each}

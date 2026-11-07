@@ -93,13 +93,13 @@
 </script>
 
 <div class="mb-6 flex items-center justify-between">
-	<h1 class="text-2xl font-bold text-slate-800">Pengguna & Departemen</h1>
+	<h1 class="text-2xl font-semibold tracking-tight">Pengguna & Departemen</h1>
 	<button class="btn btn-primary" onclick={() => (form = empty())}>+ Tambah pengguna</button>
 </div>
 
 {#if form}
 	<form class="card mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" onsubmit={save}>
-		<h2 class="font-semibold text-slate-800 sm:col-span-2 lg:col-span-3">
+		<h2 class="font-semibold text-fg sm:col-span-2 lg:col-span-3">
 			{form.id ? 'Ubah pengguna' : 'Pengguna baru'}
 		</h2>
 		<div><label class="label" for="n">Nama</label><input id="n" class="input" bind:value={form.name} required /></div>
@@ -119,7 +119,7 @@
 		<div>
 			<label class="label" for="d">Departemen</label>
 			<select id="d" class="input" bind:value={form.department_id}>
-				<option value={null}>—</option>
+				<option value={null}>Tidak ada</option>
 				{#each departments as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
 			</select>
 		</div>
@@ -127,7 +127,7 @@
 			<div>
 				<label class="label" for="a">Atasan langsung</label>
 				<select id="a" class="input" bind:value={form.approver_id}>
-					<option value={null}>—</option>
+					<option value={null}>Tidak ada</option>
 					{#each approvers as a (a.id)}<option value={a.id}>{a.name}</option>{/each}
 				</select>
 			</div>
@@ -149,14 +149,14 @@
 			<tbody>
 				{#each shown as u (u.id)}
 					<tr class={u.is_active ? '' : 'opacity-50'}>
-						<td><div class="font-medium">{u.name}</div><div class="text-xs text-slate-500">{u.email}</div></td>
+						<td><div class="font-medium">{u.name}</div><div class="text-xs text-muted">{u.email}</div></td>
 						<td>{ROLE_LABEL[u.role]}</td>
 						<td>{u.department?.name ?? '-'}</td>
 						<td>{u.approver?.name ?? '-'}</td>
 						<td>{u.is_active ? 'Aktif' : 'Nonaktif'}</td>
-						<td class="text-right whitespace-nowrap">
-							<button class="text-brand-600 hover:underline" onclick={() => edit(u)}>Ubah</button>
-							<button class="ml-3 text-slate-500 hover:underline" onclick={() => toggleActive(u)}>
+						<td class="num text-right whitespace-nowrap">
+							<button class="text-accent hover:underline" onclick={() => edit(u)}>Ubah</button>
+							<button class="ml-3 text-muted hover:underline" onclick={() => toggleActive(u)}>
 								{u.is_active ? 'Nonaktifkan' : 'Aktifkan'}
 							</button>
 						</td>
@@ -167,9 +167,9 @@
 	</div>
 
 	<div class="card">
-		<h2 class="mb-3 font-semibold text-slate-800">Departemen</h2>
+		<h2 class="mb-3 font-semibold text-fg">Departemen</h2>
 		<ul class="mb-4 space-y-1 text-sm">
-			{#each departments as d (d.id)}<li class="border-b border-slate-100 py-1">{d.name}</li>{/each}
+			{#each departments as d (d.id)}<li class="border-b border-line py-1">{d.name}</li>{/each}
 		</ul>
 		<form class="flex gap-2" onsubmit={addDept}>
 			<input class="input" placeholder="Nama departemen" bind:value={newDept} required />

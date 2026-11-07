@@ -3,7 +3,7 @@
 	import { api } from '#lib/services/api.ts';
 	import { auth, notifyError } from '#lib/session.svelte.ts';
 	import type { User } from '#lib/types/index.ts';
-	import Receipt from 'phosphor-svelte/lib/Receipt';
+	import Receipt from 'phosphor-svelte/lib/ReceiptIcon';
 
 	let email = $state('');
 	let password = $state('');

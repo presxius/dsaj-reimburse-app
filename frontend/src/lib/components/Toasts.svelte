@@ -1,6 +1,6 @@
 <script lang="ts">
-	import CheckCircle from 'phosphor-svelte/lib/CheckCircle';
-	import WarningCircle from 'phosphor-svelte/lib/WarningCircle';
+	import CheckCircle from 'phosphor-svelte/lib/CheckCircleIcon';
+	import WarningCircle from 'phosphor-svelte/lib/WarningCircleIcon';
 	import { toasts } from '#lib/session.svelte.ts';
 </script>
 

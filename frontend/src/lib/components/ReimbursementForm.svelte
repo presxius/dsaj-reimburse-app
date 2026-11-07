@@ -1,6 +1,6 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import { untrack } from 'svelte';
-	import UploadSimple from 'phosphor-svelte/lib/UploadSimple';
+	import UploadSimple from 'phosphor-svelte/lib/UploadSimpleIcon';
 	import { api } from '#lib/services/api.ts';
 	import { formatRupiah } from '#lib/labels.ts';
 	import { notify, notifyError } from '#lib/session.svelte.ts';
@@ -165,11 +165,11 @@
 					<p class="mb-2 font-medium text-fg">Hasil pembacaan OCR (draft)</p>
 					<dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
 						<dt class="text-muted">Merchant</dt>
-						<dd>{ocr.merchant ?? 'â€” tidak terbaca'}</dd>
+						<dd>{ocr.merchant ?? 'Tidak terbaca'}</dd>
 						<dt class="text-muted">Tanggal</dt>
-						<dd>{ocr.transaction_date ?? 'â€” tidak terbaca'}</dd>
+						<dd>{ocr.transaction_date ?? 'Tidak terbaca'}</dd>
 						<dt class="text-muted">Total</dt>
-						<dd>{ocr.total_amount != null ? formatRupiah(ocr.total_amount) : 'â€” tidak terbaca'}</dd>
+						<dd>{ocr.total_amount != null ? formatRupiah(ocr.total_amount) : 'Tidak terbaca'}</dd>
 					</dl>
 					{#if ocr.raw_text}
 						<details class="mt-2">

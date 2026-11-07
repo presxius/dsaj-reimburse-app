@@ -1,5 +1,5 @@
 <script lang="ts">
-	import DownloadSimple from 'phosphor-svelte/lib/DownloadSimple';
+	import DownloadSimple from 'phosphor-svelte/lib/DownloadSimpleIcon';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import { ALL_STATUSES, CATEGORY_LABEL, STATUS_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
 	import { api, query } from '#lib/services/api.ts';

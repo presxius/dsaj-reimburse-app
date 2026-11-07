@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
+	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeftIcon';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import {
 		ACTION_LABEL,

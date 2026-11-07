@@ -1,0 +1,5 @@
+# Dependensi OCR (opsional). Tanpa paket ini aplikasi tetap berjalan;
+# endpoint OCR akan mengembalikan status "failed" dan form diisi manual.
+opencv-python-headless
+paddlepaddle
+paddleocr

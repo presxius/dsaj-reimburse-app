@@ -8,7 +8,59 @@ OCR struk, verifikasi admin, persetujuan atasan, pembayaran Finance, laporan, da
 | Frontend | Svelte 5 + SvelteKit 3 (SPA, adapter-static) + TypeScript + Tailwind CSS 4 |
 | Backend | Python 3.11 + Flask + SQLAlchemy (REST API JSON di `/api`) |
 | OCR | OpenCV (preprocessing) + PaddleOCR + parser rule-based Python — **opsional** |
-| Database | SQLite (development); PostgreSQL cukup ganti `DATABASE_URL` |
+| Database | PostgreSQL 16 (production/Docker), SQLite (development); migrasi dengan Flask-Migrate (Alembic) |
+| Deployment | Docker Compose: PostgreSQL + Flask (gunicorn) + Nginx |
+
+## Deployment dengan Docker
+
+```bash
+cp .env.example .env        # isi POSTGRES_PASSWORD dan SECRET_KEY
+docker compose up -d --build
+```
+
+Aplikasi terbuka di `http://localhost` (port diatur `HTTP_PORT`). Tiga service berjalan:
+
+| Service | Isi |
+|---|---|
+| `db` | PostgreSQL 16; data di volume `pgdata`, tidak dibuka ke host |
+| `backend` | Flask + gunicorn; saat start menjalankan `flask db upgrade` otomatis. Struk di volume `receipts` |
+| `nginx` | Build frontend (multi-stage) + proxy `/api/` ke backend ([default.conf](deployment/nginx/default.conf)) |
+
+Opsi di `.env`: `SEED_DEMO=1` mengisi akun contoh, `WITH_OCR=1` memasang PaddleOCR + OpenCV di image
+backend, `SESSION_COOKIE_SECURE=1` bila sudah HTTPS, `WEB_CONCURRENCY` untuk jumlah worker.
+
+Perintah berguna:
+
+```bash
+docker compose logs -f backend
+docker compose exec backend flask --app wsgi seed                           # akun contoh
+docker compose exec db pg_dump -U reimburse reimburse > backup.sql          # backup database
+docker compose exec -T db psql -U reimburse reimburse < backup.sql          # restore
+```
+
+Volume `receipts` berisi file struk asli; ikut sertakan dalam backup bersama database.
+
+## Database & migrasi
+
+Koneksi diatur lewat `DATABASE_URL` (default SQLite di `backend/instance/reimburse.db`).
+Contoh PostgreSQL: `postgresql+psycopg://user:pass@host:5432/reimburse`.
+
+```powershell
+cd backend
+.\.venv\Scripts\flask --app wsgi db upgrade     # buat/naikkan skema ke versi terbaru
+.\.venv\Scripts\flask --app wsgi seed           # akun contoh (dilewati bila sudah ada pengguna)
+```
+
+Setelah mengubah model di `app/models.py`, buat migrasi baru lalu periksa isinya sebelum di-commit:
+
+```powershell
+.\.venv\Scripts\flask --app wsgi db migrate -m "keterangan perubahan"
+.\.venv\Scripts\flask --app wsgi db upgrade
+```
+
+Database SQLite lama yang dibuat dengan `flask init-db` (sebelum ada migrasi) cukup ditandai sekali
+dengan `flask --app wsgi db stamp head`. Tes dapat dijalankan terhadap PostgreSQL dengan
+`TEST_DATABASE_URL=postgresql+psycopg://...`.
 
 ## Menjalankan (development)
 
@@ -19,7 +71,8 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 $env:FLASK_APP = "wsgi.py"
-.\.venv\Scripts\flask init-db        # buat tabel + akun contoh
+.\.venv\Scripts\flask db upgrade     # buat tabel (lihat "Database & migrasi")
+.\.venv\Scripts\flask seed           # akun contoh
 .\.venv\Scripts\flask run --port 5000
 ```
 
@@ -83,11 +136,11 @@ Disepakati untuk versi ini dan mudah diubah:
 
 ## Catatan untuk produksi
 
-- Ganti `SECRET_KEY`, set `SESSION_COOKIE_SECURE=1` (HTTPS), dan `DATABASE_URL` ke PostgreSQL
-  (`pip install psycopg[binary]`, lalu `postgresql+psycopg://user:pass@host/db`).
-- Skema dibuat dengan `flask init-db` (`db.create_all`). Tambahkan Flask-Migrate/Alembic
-  sebelum skema mulai berubah di produksi.
-- Jalankan backend dengan WSGI server (mis. `waitress-serve --port 5000 wsgi:app` di Windows,
-  gunicorn di Linux). Contoh Nginx: [deployment/nginx/reimburse.conf](deployment/nginx/reimburse.conf).
+- Ganti `SECRET_KEY`, set `SESSION_COOKIE_SECURE=1` (HTTPS), dan `DATABASE_URL` ke PostgreSQL.
+  Jangan aktifkan `SEED_DEMO` (akun contoh memakai password yang diketahui umum).
+- HTTPS: pasang di depan service `nginx` (mis. reverse proxy/load balancer perusahaan) atau
+  tambahkan blok `listen 443 ssl` di [default.conf](deployment/nginx/default.conf).
+- Tanpa Docker: jalankan `flask db upgrade`, lalu gunicorn (`gunicorn -b 127.0.0.1:5000 --timeout 120 wsgi:app`)
+  dan Nginx dengan [deployment/nginx/reimburse.conf](deployment/nginx/reimburse.conf).
 - File struk disimpan di `backend/storage/receipts` (di luar folder publik) dan hanya bisa diakses
   lewat API yang memeriksa hak akses.

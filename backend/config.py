@@ -8,6 +8,8 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL", "sqlite:///" + os.path.join(BASE_DIR, "instance", "reimburse.db")
     )
+    # Koneksi PostgreSQL bisa putus saat idle; cek dulu sebelum dipakai.
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", os.path.join(BASE_DIR, "storage", "receipts"))
     MAX_RECEIPT_SIZE = int(os.environ.get("MAX_RECEIPT_SIZE", 5 * 1024 * 1024))  # 5 MB
     MAX_CONTENT_LENGTH = MAX_RECEIPT_SIZE + 1024 * 1024
@@ -23,4 +25,5 @@ class Config:
 
 class TestConfig(Config):
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = "sqlite://"
+    # Set TEST_DATABASE_URL untuk menjalankan test terhadap PostgreSQL.
+    SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "sqlite://")

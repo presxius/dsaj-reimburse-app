@@ -1,0 +1,54 @@
+# Jalankan: cp .env.example .env  (isi nilainya), lalu  docker compose up -d --build
+# Aplikasi tersedia di http://localhost:${HTTP_PORT:-80}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-reimburse}
+      POSTGRES_USER: ${POSTGRES_USER:-reimburse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Isi POSTGRES_PASSWORD di .env}
+      TZ: Asia/Jakarta
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Tidak dipublikasikan ke host; hanya backend yang mengakses database.
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        WITH_OCR: ${WITH_OCR:-0}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-reimburse}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-reimburse}
+      SECRET_KEY: ${SECRET_KEY:?Isi SECRET_KEY di .env}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-0}
+      SEED_DEMO: ${SEED_DEMO:-0}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+      OCR_LANG: ${OCR_LANG:-en}
+      TZ: Asia/Jakarta
+    volumes:
+      - receipts:/app/storage
+
+  nginx:
+    build:
+      context: .
+      dockerfile: deployment/nginx/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${HTTP_PORT:-80}:80"
+
+volumes:
+  pgdata:
+  receipts:

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import UploadSimple from 'phosphor-svelte/lib/UploadSimpleIcon';
+	import Car from 'phosphor-svelte/lib/CarIcon';
+	import ForkKnife from 'phosphor-svelte/lib/ForkKnifeIcon';
 	import { api } from '#lib/services/api.ts';
 	import { formatRupiah } from '#lib/labels.ts';
 	import { notify, notifyError } from '#lib/session.svelte.ts';
@@ -13,6 +15,10 @@
 
 	const MAX_SIZE = 5 * 1024 * 1024;
 	const today = new Date().toLocaleDateString('en-CA');
+	const CATEGORIES: [Category, string][] = [
+		['transport', 'Transportasi'],
+		['consumption', 'Konsumsi']
+	];
 
 	// Nilai awal hanya dipakai sekali saat form dibuat.
 	const init = untrack(() => initial);
@@ -28,22 +34,28 @@
 	let saving = $state(false);
 	let ocrConfirmed = $state(false);
 	let fromOcr = $state<Record<string, boolean>>({});
+	let dragging = $state(false);
+	let fileInput: HTMLInputElement;
 
 	const ocr = $derived(receipt?.ocr ?? null);
 	const needsConfirm = $derived(ocr?.status === 'completed');
 
-	async function onFile(e: Event) {
-		const input = e.currentTarget as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
+	function onDrop(e: DragEvent) {
+		e.preventDefault();
+		dragging = false;
+		const file = e.dataTransfer?.files[0];
+		if (file && !uploading) handleFile(file);
+	}
+
+	async function handleFile(file: File) {
 		if (!['image/jpeg', 'image/png'].includes(file.type)) {
 			notify('Format file harus JPG, JPEG, atau PNG.', 'error');
-			input.value = '';
+			fileInput.value = '';
 			return;
 		}
 		if (file.size > MAX_SIZE) {
 			notify('Ukuran file maksimal 5 MB.', 'error');
-			input.value = '';
+			fileInput.value = '';
 			return;
 		}
 		previewUrl = URL.createObjectURL(file);
@@ -72,7 +84,7 @@
 		} catch (err) {
 			receipt = null;
 			previewUrl = null;
-			input.value = '';
+			fileInput.value = '';
 			notifyError(err);
 		} finally {
 			uploading = false;
@@ -126,33 +138,67 @@
 	<!-- Kolom kiri: struk -->
 	<div class="card space-y-4">
 		<h2 class="font-semibold text-fg">1. Bukti transaksi</h2>
-		<label class="flex items-center gap-2 text-sm text-muted">
-			<input type="checkbox" bind:checked={useOcr} />
+		<label class="flex cursor-pointer items-center gap-2.5 text-sm text-muted">
+			<input type="checkbox" class="check" bind:checked={useOcr} />
 			Baca struk otomatis dengan OCR
 		</label>
 		<label
-			class="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-line px-4 py-8 text-center transition-colors hover:border-accent hover:bg-accent-soft focus-within:border-accent {uploading
-				? 'pointer-events-none opacity-60'
-				: ''}"
+			class="group flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-all duration-200 focus-within:border-accent {dragging
+				? 'scale-[1.01] border-accent bg-accent-soft'
+				: 'border-line hover:border-accent/60 hover:bg-accent-soft/50'} {uploading ? 'pointer-events-none opacity-60' : ''}"
+			ondragenter={(e) => {
+				e.preventDefault();
+				dragging = true;
+			}}
+			ondragover={(e) => e.preventDefault()}
+			ondragleave={(e) => {
+				if (!e.currentTarget.contains(e.relatedTarget as Node)) dragging = false;
+			}}
+			ondrop={onDrop}
 		>
-			<UploadSimple size={24} class="text-accent" />
-			<span class="text-sm font-medium">{receipt ? 'Ganti foto struk' : 'Pilih foto struk'}</span>
+			<span
+				class="grid h-11 w-11 place-items-center rounded-full bg-accent-soft text-accent transition-transform duration-300 ease-out-expo group-hover:-translate-y-0.5 {dragging
+					? '-translate-y-1'
+					: ''}"
+			>
+				<UploadSimple size={22} weight="bold" />
+			</span>
+			<span class="text-sm font-medium">
+				{dragging ? 'Lepaskan untuk mengunggah' : receipt ? 'Ganti foto struk' : 'Pilih atau tarik foto struk ke sini'}
+			</span>
 			<span class="text-xs text-muted">JPG, JPEG, atau PNG, maksimal 5 MB</span>
 			<input
+				bind:this={fileInput}
 				type="file"
 				accept="image/jpeg,image/png"
 				class="sr-only"
-				onchange={onFile}
+				onchange={(e) => {
+					const f = e.currentTarget.files?.[0];
+					if (f) handleFile(f);
+				}}
 				disabled={uploading}
 			/>
 		</label>
 
-		{#if uploading}
-			<p class="text-sm text-accent">{useOcr ? 'Mengunggah dan membaca struk...' : 'Mengunggah...'}</p>
-		{/if}
-
 		{#if previewUrl}
-			<img src={previewUrl} alt="Pratinjau struk" class="max-h-96 w-full rounded-lg border object-contain" />
+			<div class="relative min-h-32 overflow-hidden rounded-lg border border-line bg-subtle">
+				<img
+					src={previewUrl}
+					alt="Pratinjau struk"
+					class="max-h-96 w-full object-contain transition-[filter] duration-300 {uploading ? 'brightness-90' : ''}"
+				/>
+				{#if uploading && useOcr}
+					<div class="scan-line"></div>
+				{/if}
+				{#if uploading}
+					<div
+						class="absolute inset-x-3 bottom-3 rounded-lg bg-surface/90 px-3 py-2 text-center text-xs font-medium text-accent backdrop-blur"
+						role="status"
+					>
+						{useOcr ? 'Membaca struk...' : 'Mengunggah...'}
+					</div>
+				{/if}
+			</div>
 		{/if}
 
 		{#if ocr}
@@ -169,7 +215,7 @@
 						<dt class="text-muted">Tanggal</dt>
 						<dd>{ocr.transaction_date ?? 'Tidak terbaca'}</dd>
 						<dt class="text-muted">Total</dt>
-						<dd>{ocr.total_amount != null ? formatRupiah(ocr.total_amount) : 'Tidak terbaca'}</dd>
+						<dd class="num">{ocr.total_amount != null ? formatRupiah(ocr.total_amount) : 'Tidak terbaca'}</dd>
 					</dl>
 					{#if ocr.raw_text}
 						<details class="mt-2">
@@ -192,15 +238,25 @@
 		<h2 class="font-semibold text-fg">2. Detail pengeluaran</h2>
 		<div>
 			<span class="label">Kategori</span>
-			<div class="flex gap-2">
-				{#each [['transport', 'Transportasi'], ['consumption', 'Konsumsi']] as [value, text] (value)}
+			<div class="relative grid grid-cols-2 rounded-lg bg-subtle p-1">
+				<span
+					class="absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-md border border-line bg-surface shadow-[0_1px_2px_var(--shadow)] transition-transform duration-300 ease-out-expo"
+					style="transform: translateX({category === 'consumption' ? '100%' : '0'})"
+					aria-hidden="true"
+				></span>
+				{#each CATEGORIES as [value, text] (value)}
+					{@const on = category === value}
 					<label
-						class="flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-sm {category ===
-						value
-							? 'border-accent bg-accent-soft font-medium text-accent'
-							: 'border-line'}"
+						class="relative flex cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent {on
+							? 'font-medium text-fg'
+							: 'text-muted hover:text-fg'}"
 					>
 						<input type="radio" class="sr-only" bind:group={category} {value} />
+						{#if value === 'transport'}
+							<Car size={16} weight={on ? 'fill' : 'regular'} class={on ? 'text-accent' : ''} />
+						{:else}
+							<ForkKnife size={16} weight={on ? 'fill' : 'regular'} class={on ? 'text-accent' : ''} />
+						{/if}
 						{text}
 					</label>
 				{/each}
@@ -208,16 +264,19 @@
 		</div>
 		<div>
 			<label class="label" for="merchant">Merchant / penyedia {@render ocrTag('merchant')}</label>
-			<input id="merchant" class="input" bind:value={merchant} placeholder="mis. Blue Taxi, Kopi Senja" />
+			<input id="merchant" class="input {fromOcr.merchant ? 'ocr-flash' : ''}" bind:value={merchant}
+				placeholder="mis. Blue Taxi, Kopi Senja" />
 		</div>
 		<div class="grid gap-4 sm:grid-cols-2">
 			<div>
 				<label class="label" for="date">Tanggal transaksi * {@render ocrTag('date')}</label>
-				<input id="date" type="date" class="input" max={today} bind:value={transactionDate} required />
+				<input id="date" type="date" class="input {fromOcr.date ? 'ocr-flash' : ''}" max={today}
+					bind:value={transactionDate} required />
 			</div>
 			<div>
 				<label class="label" for="amount">Nominal (Rp) * {@render ocrTag('amount')}</label>
-				<input id="amount" type="number" min="1" step="any" class="input" bind:value={amount} required />
+				<input id="amount" type="number" min="1" step="any" class="input num {fromOcr.amount ? 'ocr-flash' : ''}"
+					bind:value={amount} required />
 			</div>
 		</div>
 		<div>
@@ -227,8 +286,12 @@
 		</div>
 
 		{#if needsConfirm}
-			<label class="flex items-start gap-2 rounded-lg border border-warn/30 bg-warn/10 p-3 text-sm text-fg">
-				<input type="checkbox" class="mt-0.5" bind:checked={ocrConfirmed} />
+			<label
+				class="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm text-fg transition-colors duration-300 {ocrConfirmed
+					? 'border-accent/40 bg-accent-soft'
+					: 'border-warn/30 bg-warn/10'}"
+			>
+				<input type="checkbox" class="check mt-px" bind:checked={ocrConfirmed} />
 				Saya sudah membandingkan data di atas dengan struk asli dan memastikan merchant, tanggal, dan
 				nominal sudah benar.
 			</label>

@@ -23,9 +23,9 @@
 		<tbody>
 			{#each logs as l (l.id)}
 				<tr>
-					<td class="whitespace-nowrap">{formatDate(l.created_at, true)}</td>
+					<td class="num whitespace-nowrap text-muted">{formatDate(l.created_at, true)}</td>
 					<td>{l.user ?? '-'}</td>
-					<td><code class="text-xs">{l.action}</code></td>
+					<td><code class="rounded bg-subtle px-1.5 py-0.5 font-mono text-xs">{l.action}</code></td>
 					<td class="text-muted">{l.detail ?? ''}</td>
 				</tr>
 			{/each}

@@ -5,9 +5,10 @@
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /*
- * Palet: netral dingin + satu aksen teal.
- * Warna lain hanya dipakai untuk makna (status), bukan dekorasi.
+ * Bahasa visual: kertas struk. Netral dingin + satu aksen teal; warna lain hanya untuk makna status.
+ * Nominal dan kode memakai mono, seperti struk thermal.
  * Radius: kontrol 8px, kartu 12px, badge pill.
+ * Motion: 150-300ms, cubic-bezier(.16,1,.3,1); hanya untuk perubahan state.
  */
 :root {
 	--bg: #f4f5f7;
@@ -25,6 +26,9 @@
 	--danger-hover: #912018;
 	--warn: #a15c07;
 	--warn-hover: #854a06;
+	--edge: rgb(21 24 29 / 0.14);
+	--shadow: rgb(30 45 60 / 0.1);
+	--ease: cubic-bezier(0.16, 1, 0.3, 1);
 	color-scheme: light;
 }
 
@@ -44,6 +48,8 @@
 	--danger-hover: #f58b83;
 	--warn: #e9a23b;
 	--warn-hover: #f0b861;
+	--edge: rgb(231 233 236 / 0.12);
+	--shadow: rgb(0 0 0 / 0.45);
 	color-scheme: dark;
 }
 
@@ -65,6 +71,7 @@
 	--color-danger-hover: var(--danger-hover);
 	--color-warn: var(--warn);
 	--color-warn-hover: var(--warn-hover);
+	--ease-out-expo: var(--ease);
 }
 
 @layer base {
@@ -78,7 +85,6 @@
 		-webkit-font-smoothing: antialiased;
 		font-feature-settings: 'cv11', 'ss01';
 	}
-	input[type='checkbox'],
 	input[type='radio'] {
 		accent-color: var(--accent);
 	}
@@ -90,7 +96,9 @@
 		background: var(--accent-soft);
 	}
 	@media (prefers-reduced-motion: reduce) {
-		* {
+		*,
+		*::before,
+		*::after {
 			transition: none !important;
 			animation: none !important;
 		}
@@ -102,13 +110,21 @@
 		@apply rounded-xl border border-line bg-surface p-5;
 	}
 	.btn {
-		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-all duration-150 select-none active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap select-none active:translate-y-px active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+		transition:
+			background-color 150ms var(--ease),
+			border-color 150ms var(--ease),
+			transform 120ms var(--ease),
+			box-shadow 150ms var(--ease);
 	}
 	.btn-primary {
 		@apply bg-accent text-on-accent hover:bg-accent-hover;
+		box-shadow:
+			inset 0 1px 0 rgb(255 255 255 / 0.14),
+			0 1px 2px var(--shadow);
 	}
 	.btn-secondary {
-		@apply border border-line bg-surface text-fg hover:bg-subtle;
+		@apply border border-line bg-surface text-fg hover:border-faint hover:bg-subtle;
 	}
 	.btn-danger {
 		@apply bg-danger text-white hover:bg-danger-hover;
@@ -117,7 +133,14 @@
 		@apply bg-warn text-white hover:bg-warn-hover;
 	}
 	.input {
-		@apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg transition-colors placeholder:text-faint hover:border-faint focus:border-accent focus:outline-none;
+		@apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-faint hover:border-faint focus:border-accent focus:outline-none;
+		transition:
+			border-color 150ms var(--ease),
+			box-shadow 150ms var(--ease),
+			background-color 300ms var(--ease);
+	}
+	.input:focus {
+		box-shadow: 0 0 0 3px var(--accent-soft);
 	}
 	.label {
 		@apply mb-1.5 block text-xs font-medium text-muted;
@@ -135,6 +158,178 @@
 		@apply border-b-0;
 	}
 	.num {
+		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.02em;
+	}
+
+	/* Checkbox kustom: centang "tergambar" saat dipilih. */
+	.check {
+		appearance: none;
+		display: inline-grid;
+		place-content: center;
+		flex-shrink: 0;
+		width: 1.15rem;
+		height: 1.15rem;
+		border: 1.5px solid var(--faint);
+		border-radius: 5px;
+		background: var(--surface);
+		cursor: pointer;
+		transition:
+			background-color 150ms var(--ease),
+			border-color 150ms var(--ease),
+			transform 120ms var(--ease);
+	}
+	.check:active {
+		transform: scale(0.9);
+	}
+	.check:checked {
+		background: var(--accent);
+		border-color: var(--accent);
+	}
+	.check::before {
+		content: '';
+		width: 0.55rem;
+		height: 0.3rem;
+		border-left: 2px solid var(--on-accent);
+		border-bottom: 2px solid var(--on-accent);
+		transform: translateY(-1px) rotate(-45deg) scale(0);
+		transition: transform 200ms var(--ease);
+	}
+	.check:checked::before {
+		transform: translateY(-1px) rotate(-45deg) scale(1);
+	}
+
+	/* Slip struk: tepi bawah bergerigi. Bayangan lewat drop-shadow di wrapper agar ikut bentuk gerigi. */
+	.slip-wrap {
+		filter: drop-shadow(0 0 0.6px var(--edge)) drop-shadow(0 10px 18px var(--shadow));
+	}
+	.slip {
+		position: relative;
+		background: var(--surface);
+		border-radius: 12px 12px 0 0;
+		padding: 1.25rem 1.25rem 1.75rem;
+		--tooth: 7px;
+		mask:
+			conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(2 * var(--tooth)) 100%;
+	}
+	.slip-rule {
+		border: 0;
+		border-top: 1.5px dashed var(--line);
+		margin: 0.875rem 0;
+	}
+
+	/* Stempel: muncul sekali dengan hentakan. */
+	.stamp {
+		display: inline-block;
+		padding: 0.3rem 0.8rem;
+		border: 2.5px solid currentColor;
+		border-radius: 6px;
+		font-family: var(--font-mono);
+		font-size: 1.15rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		line-height: 1;
+		text-transform: uppercase;
+		opacity: 0.82;
+		transform: rotate(-9deg);
+		box-shadow: inset 0 0 0 1.5px color-mix(in srgb, currentColor 35%, transparent);
+		animation: stamp-in 460ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
+		animation-delay: var(--stamp-delay, 150ms);
+		pointer-events: none;
+	}
+
+	.skeleton {
+		position: relative;
+		overflow: hidden;
+		border-radius: 6px;
+		background: var(--subtle);
+	}
+	.skeleton::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		transform: translateX(-100%);
+		background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent);
+		animation: shimmer 1.4s infinite;
+	}
+
+	/* Garis pindai di atas foto struk selama OCR berjalan. */
+	.scan-line {
+		position: absolute;
+		inset-inline: 0;
+		top: 0;
+		height: 36%;
+		background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent) 22%, transparent) 85%, var(--accent));
+		border-bottom: 2px solid var(--accent);
+		animation: scan 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+		pointer-events: none;
+	}
+
+	/* Field yang baru diisi OCR berkedip lembut sekali, supaya karyawan tahu apa yang berubah. */
+	.ocr-flash {
+		animation: ocr-flash 1.4s var(--ease);
+	}
+
+	.shake {
+		animation: shake 380ms var(--ease);
+	}
+
+	.print {
+		animation: print 1.2s cubic-bezier(0.3, 0.7, 0.2, 1) 250ms both;
+	}
+}
+
+@keyframes stamp-in {
+	from {
+		opacity: 0;
+		transform: rotate(-9deg) scale(1.9);
+	}
+	60% {
+		opacity: 0.9;
+	}
+	to {
+		opacity: 0.82;
+		transform: rotate(-9deg) scale(1);
+	}
+}
+@keyframes shimmer {
+	to {
+		transform: translateX(100%);
+	}
+}
+@keyframes scan {
+	from {
+		transform: translateY(-100%);
+	}
+	to {
+		transform: translateY(180%);
+	}
+}
+@keyframes ocr-flash {
+	0%,
+	30% {
+		background-color: var(--accent-soft);
+		border-color: var(--accent);
+	}
+}
+@keyframes shake {
+	20%,
+	60% {
+		transform: translateX(-6px);
+	}
+	40%,
+	80% {
+		transform: translateX(6px);
+	}
+}
+@keyframes print {
+	from {
+		transform: translateY(-100%);
+	}
+}
+@keyframes toast-timer {
+	to {
+		transform: scaleX(0);
 	}
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DownloadSimple from 'phosphor-svelte/lib/DownloadSimpleIcon';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import CountUp from '#lib/components/CountUp.svelte';
 	import { ALL_STATUSES, CATEGORY_LABEL, STATUS_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
 	import { api, query } from '#lib/services/api.ts';
 	import { auth, notifyError } from '#lib/session.svelte.ts';
@@ -63,16 +64,16 @@
 	<div class="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
 		<div class="card">
 			<div class="text-xs text-muted">Jumlah pengajuan</div>
-			<div class="text-2xl font-semibold tracking-tight">{data.summary.total_count}</div>
+			<div class="num text-2xl font-semibold"><CountUp value={data.summary.total_count} /></div>
 		</div>
 		<div class="card">
 			<div class="text-xs text-muted">Total nominal</div>
-			<div class="text-xl font-semibold">{formatRupiah(data.summary.total_amount)}</div>
+			<div class="num text-xl font-semibold"><CountUp value={data.summary.total_amount} format={formatRupiah} /></div>
 		</div>
 		{#each ['transport', 'consumption'] as const as c (c)}
 			<div class="card">
 				<div class="text-xs text-muted">{CATEGORY_LABEL[c]}</div>
-				<div class="text-xl font-semibold">{formatRupiah(data.summary.by_category[c]?.amount ?? 0)}</div>
+				<div class="num text-xl font-semibold"><CountUp value={data.summary.by_category[c]?.amount ?? 0} format={formatRupiah} /></div>
 				<div class="text-xs text-muted">{data.summary.by_category[c]?.count ?? 0} pengajuan</div>
 			</div>
 		{/each}
@@ -89,7 +90,7 @@
 			<tbody>
 				{#each data.rows as r (r.id)}
 					<tr>
-						<td><a class="text-accent hover:underline" href="/reimburse/{r.id}">{r.code}</a></td>
+						<td><a class="num text-accent hover:underline" href="/reimburse/{r.id}">{r.code}</a></td>
 						<td>{r.employee.name}</td>
 						<td>{CATEGORY_LABEL[r.category]}</td>
 						<td class="whitespace-nowrap">{formatDate(r.transaction_date)}</td>

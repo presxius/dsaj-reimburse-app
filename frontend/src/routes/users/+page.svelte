@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { slide } from 'svelte/transition';
+	import Plus from 'phosphor-svelte/lib/PlusIcon';
 	import { ROLE_LABEL } from '#lib/labels.ts';
+	import { ease, ms } from '#lib/motion.ts';
 	import { api } from '#lib/services/api.ts';
 	import { notify, notifyError } from '#lib/session.svelte.ts';
 	import type { Department, Role, User } from '#lib/types/index.ts';
@@ -94,11 +97,11 @@
 
 <div class="mb-6 flex items-center justify-between">
 	<h1 class="text-2xl font-semibold tracking-tight">Pengguna & Departemen</h1>
-	<button class="btn btn-primary" onclick={() => (form = empty())}>+ Tambah pengguna</button>
+	<button class="group btn btn-primary" onclick={() => (form = empty())}><Plus size={16} weight="bold" class="transition-transform duration-300 group-hover:rotate-90" /> Tambah pengguna</button>
 </div>
 
 {#if form}
-	<form class="card mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" onsubmit={save}>
+	<form class="card mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" onsubmit={save} transition:slide={{ duration: ms(260), easing: ease }}>
 		<h2 class="font-semibold text-fg sm:col-span-2 lg:col-span-3">
 			{form.id ? 'Ubah pengguna' : 'Pengguna baru'}
 		</h2>
@@ -173,7 +176,7 @@
 		</ul>
 		<form class="flex gap-2" onsubmit={addDept}>
 			<input class="input" placeholder="Nama departemen" bind:value={newDept} required />
-			<button class="btn btn-primary">+</button>
+			<button class="btn btn-primary px-2.5" aria-label="Tambah departemen"><Plus size={16} weight="bold" /></button>
 		</form>
 	</div>
 </div>

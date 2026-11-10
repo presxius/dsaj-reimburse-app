@@ -31,7 +31,7 @@ def ocr_scan():
     db.session.commit()
 
     try:
-        lines, fields = run_ocr(receipt_path(receipt), current_app.config["OCR_LANG"])
+        lines, fields = run_ocr(receipt_path(receipt), current_app.config["OCR_MODEL_SIZE"])
         ocr.raw_text = "\n".join(lines)
         ocr.merchant = fields["merchant"]
         ocr.transaction_date = fields["transaction_date"]

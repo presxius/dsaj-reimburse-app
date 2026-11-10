@@ -4,12 +4,20 @@
 	import { CATEGORY_LABEL } from '#lib/labels.ts';
 	import type { Category } from '#lib/types/index.ts';
 
-	let { category }: { category: Category } = $props();
+	let { category, size = 'md' }: { category: Category; size?: 'sm' | 'md' } = $props();
 </script>
 
+<!-- Di dalam baris yang di-hover (.group), ikon "menyala" lime. -->
 <span
-	class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-line bg-surface text-muted transition-colors group-hover:border-accent/40 group-hover:text-accent"
+	class="grid shrink-0 place-items-center bg-sunken text-ink-2 transition-[background-color,color,transform] duration-200 ease-snap group-hover:-rotate-6 group-hover:bg-lime group-hover:text-on-lime {size ===
+	'sm'
+		? 'size-7 rounded-lg'
+		: 'size-9 rounded-[10px]'}"
 	title={CATEGORY_LABEL[category]}
 >
-	{#if category === 'transport'}<Car size={18} />{:else}<ForkKnife size={18} />{/if}
+	{#if category === 'transport'}
+		<Car size={size === 'sm' ? 15 : 18} weight="duotone" />
+	{:else}
+		<ForkKnife size={size === 'sm' ? 15 : 18} weight="duotone" />
+	{/if}
 </span>

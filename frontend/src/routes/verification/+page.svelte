@@ -1,13 +1,17 @@
 <script lang="ts">
 	import ReimbursementTable from '#lib/components/ReimbursementTable.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 	import { CATEGORY_LABEL } from '#lib/labels.ts';
 	import { auth } from '#lib/session.svelte.ts';
 
 	const category = auth.user?.role === 'admin_transport' ? 'transport' : 'consumption';
 </script>
 
-<h1 class="mb-1 text-2xl font-semibold tracking-tight">Verifikasi Pengajuan</h1>
-<p class="mb-6 text-sm text-muted">Kategori {CATEGORY_LABEL[category]}</p>
+<PageHeader
+	eyebrow="Admin · {CATEGORY_LABEL[category]}"
+	title="Verifikasi Pengajuan"
+	description="Periksa kesesuaian struk dengan data pengajuan, lalu teruskan ke atasan, kembalikan, atau tolak."
+/>
 
 <ReimbursementTable
 	showCategoryFilter={false}

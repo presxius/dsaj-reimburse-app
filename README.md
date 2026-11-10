@@ -8,7 +8,7 @@ OCR struk, verifikasi admin, persetujuan atasan, pembayaran Finance, laporan, da
 | Frontend | Svelte 5 + SvelteKit 3 (SPA, adapter-static) + TypeScript + Tailwind CSS 4 |
 | Backend | Python 3.11 + Flask + SQLAlchemy (REST API JSON di `/api`) |
 | OCR | OpenCV (preprocessing) + PaddleOCR + parser rule-based Python — **opsional** |
-| Database | PostgreSQL 16 (production/Docker), SQLite (development); migrasi dengan Flask-Migrate (Alembic) |
+| Database | PostgreSQL 18; migrasi dengan Flask-Migrate (Alembic) |
 | Deployment | Docker Compose: PostgreSQL + Flask (gunicorn) + Nginx |
 
 ## Deployment dengan Docker
@@ -22,12 +22,12 @@ Aplikasi terbuka di `http://localhost` (port diatur `HTTP_PORT`). Tiga service b
 
 | Service | Isi |
 |---|---|
-| `db` | PostgreSQL 16; data di volume `pgdata`, tidak dibuka ke host |
+| `db` | PostgreSQL 18; data di volume `pgdata`, tidak dibuka ke host |
 | `backend` | Flask + gunicorn; saat start menjalankan `flask db upgrade` otomatis. Struk di volume `receipts` |
 | `nginx` | Build frontend (multi-stage) + proxy `/api/` ke backend ([default.conf](deployment/nginx/default.conf)) |
 
 Opsi di `.env`: `SEED_DEMO=1` mengisi akun contoh, `WITH_OCR=1` memasang PaddleOCR + OpenCV di image
-backend, `SESSION_COOKIE_SECURE=1` bila sudah HTTPS, `WEB_CONCURRENCY` untuk jumlah worker.
+backend, `SESSION_COOKIE_SECURE=1` bila sudah HTTPS, `WEB_CONCURRENCY` untuk jumlah worker (default 1, masing-masing 4 thread).
 
 Perintah berguna:
 
@@ -42,8 +42,8 @@ Volume `receipts` berisi file struk asli; ikut sertakan dalam backup bersama dat
 
 ## Database & migrasi
 
-Koneksi diatur lewat `DATABASE_URL` (default SQLite di `backend/instance/reimburse.db`).
-Contoh PostgreSQL: `postgresql+psycopg://user:pass@host:5432/reimburse`.
+Aplikasi hanya memakai PostgreSQL. Koneksi diatur lewat `DATABASE_URL` (wajib), contoh:
+`postgresql+psycopg://user:pass@host:5432/reimburse`. Di Docker variabel ini diisi otomatis.
 
 ```powershell
 cd backend
@@ -58,11 +58,23 @@ Setelah mengubah model di `app/models.py`, buat migrasi baru lalu periksa isinya
 .\.venv\Scripts\flask --app wsgi db upgrade
 ```
 
-Database SQLite lama yang dibuat dengan `flask init-db` (sebelum ada migrasi) cukup ditandai sekali
-dengan `flask --app wsgi db stamp head`. Tes dapat dijalankan terhadap PostgreSQL dengan
-`TEST_DATABASE_URL=postgresql+psycopg://...`.
+Memulai database dari nol (menghapus **semua** data dan struk di volume Docker):
+
+```bash
+docker compose down -v
+docker compose up -d --build      # skema dibuat ulang oleh `flask db upgrade`
+```
+
+Tes memakai database terpisah lewat `TEST_DATABASE_URL=postgresql+psycopg://...`
+(tanpa variabel ini tes berjalan di SQLite in-memory).
 
 ## Menjalankan (development)
+
+**Database** — PostgreSQL dari Docker, dibuka di `localhost:5432` ([docker-compose.dev.yml](docker-compose.dev.yml)):
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+```
 
 **Backend** (terminal 1):
 
@@ -71,6 +83,7 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 $env:FLASK_APP = "wsgi.py"
+$env:DATABASE_URL = "postgresql+psycopg://reimburse:<POSTGRES_PASSWORD>@localhost:5432/reimburse"
 .\.venv\Scripts\flask db upgrade     # buat tabel (lihat "Database & migrasi")
 .\.venv\Scripts\flask seed           # akun contoh
 .\.venv\Scripts\flask run --port 5000
@@ -107,8 +120,10 @@ cd backend
 .\.venv\Scripts\pip install -r requirements-ocr.txt
 ```
 
-Model PaddleOCR diunduh otomatis saat pertama dipakai. Bahasa model diatur lewat `OCR_LANG`
-(default `en`). Aturan parser (kata kunci total, pengecualian, dll.) ada di
+Model PaddleOCR (PP-OCRv6) diunduh otomatis saat pertama dipakai. Ukurannya diatur lewat
+`OCR_MODEL_SIZE`: `tiny`, `small` (default), atau `medium`. Makin besar makin akurat tetapi butuh RAM
+lebih banyak; di server ±1 GB RAM pakai `small` atau `tiny` dengan `WEB_CONCURRENCY=1`, karena setiap
+worker gunicorn memuat model sendiri. Aturan parser (kata kunci total, pengecualian, dll.) ada di
 `backend/app/ocr/parser.py` (`DEFAULT_RULES`). Parser mengembalikan kosong bila field tidak
 ditemukan **atau ambigu** — tidak pernah menebak.
 
@@ -136,7 +151,7 @@ Disepakati untuk versi ini dan mudah diubah:
 
 ## Catatan untuk produksi
 
-- Ganti `SECRET_KEY`, set `SESSION_COOKIE_SECURE=1` (HTTPS), dan `DATABASE_URL` ke PostgreSQL.
+- Ganti `SECRET_KEY` dan set `SESSION_COOKIE_SECURE=1` (HTTPS).
   Jangan aktifkan `SEED_DEMO` (akun contoh memakai password yang diketahui umum).
 - HTTPS: pasang di depan service `nginx` (mis. reverse proxy/load balancer perusahaan) atau
   tambahkan blok `listen 443 ssl` di [default.conf](deployment/nginx/default.conf).

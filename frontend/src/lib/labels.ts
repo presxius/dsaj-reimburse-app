@@ -26,17 +26,26 @@ export const STATUS_LABEL: Record<Status, string> = {
 	paid: 'Paid'
 };
 
-export const STATUS_COLOR: Record<Status, string> = {
-	draft: 'bg-subtle text-muted',
-	submitted: 'bg-sky-500/10 text-sky-700 dark:text-sky-300',
-	under_review: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-	revision_required: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-	rejected: 'bg-red-500/10 text-red-700 dark:text-red-300',
-	pending_approval: 'bg-cyan-500/10 text-cyan-700 dark:text-cyan-300',
-	approved: 'bg-accent-soft text-accent',
-	processing_payment: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
-	paid: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+// Deskripsi status sesuai PRD §8.4; tampil sebagai keterangan (tooltip) pada badge.
+export const STATUS_HINT: Record<Status, string> = {
+	draft: 'Pengajuan masih dalam proses pengisian.',
+	submitted: 'Pengajuan telah dikirim oleh karyawan.',
+	under_review: 'Pengajuan sedang diperiksa admin.',
+	revision_required: 'Pengajuan dikembalikan untuk diperbaiki.',
+	rejected: 'Pengajuan ditolak oleh admin atau atasan.',
+	pending_approval: 'Pengajuan menunggu persetujuan atasan.',
+	approved: 'Pengajuan telah disetujui atasan.',
+	processing_payment: 'Finance sedang memproses pembayaran.',
+	paid: 'Pembayaran reimburse telah dilakukan.'
 };
+
+export const initials = (name: string) =>
+	name
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0].toUpperCase())
+		.join('');
 
 export const ACTION_LABEL: Record<Action, string> = {
 	submit: 'Kirim pengajuan',

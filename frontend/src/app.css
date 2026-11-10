@@ -1,99 +1,145 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/geist-mono';
+@import '@fontsource-variable/bricolage-grotesque/standard.css';
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 /*
- * Bahasa visual: kertas struk. Netral dingin + satu aksen teal; warna lain hanya untuk makna status.
- * Nominal dan kode memakai mono, seperti struk thermal.
- * Radius: kontrol 8px, kartu 12px, badge pill.
- * Motion: 150-300ms, cubic-bezier(.16,1,.3,1); hanya untuk perubahan state.
+ * Bahasa visual "kertas & tinta": kertas hangat, teks tinta, satu aksen lime ala stabilo.
+ * - Lime hanya berupa bidang (stabilo, status Paid, fokus); tidak pernah jadi warna teks di tema terang.
+ * - Status dibedakan lewat glyph progres + label, bukan pil warna-warni.
+ * - Tipografi: Bricolage Grotesque (judul & angka besar), Geist (UI), Geist Mono (kode & label kecil).
+ * - Motion: 150-400ms. --ease untuk perubahan state, --spring untuk elemen yang "dilepas".
  */
 :root {
-	--bg: #f4f5f7;
-	--surface: #fbfbfc;
-	--subtle: #eef0f3;
-	--line: #e1e4e9;
-	--fg: #15181d;
-	--muted: #5b6370;
-	--faint: #8a919c;
-	--accent: #0f766e;
-	--accent-hover: #115e59;
-	--accent-soft: #e3f2ef;
-	--on-accent: #f4fbfa;
-	--danger: #b42318;
-	--danger-hover: #912018;
-	--warn: #a15c07;
-	--warn-hover: #854a06;
-	--edge: rgb(21 24 29 / 0.14);
-	--shadow: rgb(30 45 60 / 0.1);
-	--ease: cubic-bezier(0.16, 1, 0.3, 1);
+	--bg: #f6f5f1;
+	--surface: #ffffff;
+	--sunken: #efede7;
+	--line: #e7e4dc;
+	--line-strong: #d4d0c5;
+	--ink: #161613;
+	--ink-2: #3f3e39;
+	--muted: #6b6962;
+	--faint: #9b988e;
+	--lime: #d6f25f;
+	--lime-deep: #a9cf1f;
+	--on-lime: #192300;
+	--primary: #161613;
+	--primary-hover: #2e2e29;
+	--on-primary: #f6f5f1;
+	/* Bidang tanda (logo, langkah, centang): tinta+lime di terang, lime+tinta di gelap. */
+	--chip: #161613;
+	--on-chip: #d6f25f;
+	--ok: #1f7f45;
+	--warn: #b0640b;
+	--danger: #c4392b;
+	--raise: 0 1px 2px rgb(22 22 19 / 0.05), 0 0 0 1px rgb(22 22 19 / 0.02);
+	--pop: 0 1px 2px rgb(22 22 19 / 0.04), 0 12px 32px -12px rgb(22 22 19 / 0.22);
+	--float: 0 24px 56px -16px rgb(22 22 19 / 0.32);
+	--glow: 0 0 0 4px color-mix(in oklab, var(--lime) 60%, transparent);
+	--mark-from: 56%;
+	--mark-to: 90%;
+	--chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%236b6962' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+	--ease: cubic-bezier(0.2, 0.9, 0.1, 1);
+	--spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 	color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-	--bg: #0d0f12;
-	--surface: #14171b;
-	--subtle: #1b1f24;
-	--line: #262b32;
-	--fg: #e7e9ec;
-	--muted: #9aa2ad;
-	--faint: #6d7480;
-	--accent: #2dd4bf;
-	--accent-hover: #5eead4;
-	--accent-soft: #11302c;
-	--on-accent: #04201c;
-	--danger: #f0645a;
-	--danger-hover: #f58b83;
-	--warn: #e9a23b;
-	--warn-hover: #f0b861;
-	--edge: rgb(231 233 236 / 0.12);
-	--shadow: rgb(0 0 0 / 0.45);
+	--bg: #0e0e0d;
+	--surface: #171715;
+	--sunken: #1f1f1c;
+	--line: #2a2926;
+	--line-strong: #3b3a35;
+	--ink: #f0efe9;
+	--ink-2: #d1cfc6;
+	--muted: #a19f95;
+	--faint: #6f6d65;
+	--lime: #d2f25a;
+	--lime-deep: #b9e02f;
+	--on-lime: #141d00;
+	--primary: #f0efe9;
+	--primary-hover: #ffffff;
+	--on-primary: #0e0e0d;
+	--chip: #d2f25a;
+	--on-chip: #141d00;
+	--ok: #62d08d;
+	--warn: #f1b65a;
+	--danger: #ff7a6a;
+	--raise: 0 1px 2px rgb(0 0 0 / 0.4);
+	--pop: 0 1px 2px rgb(0 0 0 / 0.3), 0 16px 36px -12px rgb(0 0 0 / 0.65);
+	--float: 0 24px 56px -16px rgb(0 0 0 / 0.75);
+	--glow: 0 0 0 4px color-mix(in oklab, var(--lime) 28%, transparent);
+	/* Di tema gelap stabilo turun jadi garis tebal di bawah teks agar teks terang tetap terbaca. */
+	--mark-from: 80%;
+	--mark-to: 96%;
+	--chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23a19f95' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
 	color-scheme: dark;
 }
 
 @theme inline {
 	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
 	--font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+	--font-display: 'Bricolage Grotesque Variable', 'Geist Variable', ui-sans-serif, sans-serif;
 	--color-bg: var(--bg);
 	--color-surface: var(--surface);
-	--color-subtle: var(--subtle);
+	--color-sunken: var(--sunken);
 	--color-line: var(--line);
-	--color-fg: var(--fg);
+	--color-line-strong: var(--line-strong);
+	--color-ink: var(--ink);
+	--color-ink-2: var(--ink-2);
 	--color-muted: var(--muted);
 	--color-faint: var(--faint);
-	--color-accent: var(--accent);
-	--color-accent-hover: var(--accent-hover);
-	--color-accent-soft: var(--accent-soft);
-	--color-on-accent: var(--on-accent);
-	--color-danger: var(--danger);
-	--color-danger-hover: var(--danger-hover);
+	--color-lime: var(--lime);
+	--color-lime-deep: var(--lime-deep);
+	--color-on-lime: var(--on-lime);
+	--color-primary: var(--primary);
+	--color-primary-hover: var(--primary-hover);
+	--color-on-primary: var(--on-primary);
+	--color-chip: var(--chip);
+	--color-on-chip: var(--on-chip);
+	--color-ok: var(--ok);
 	--color-warn: var(--warn);
-	--color-warn-hover: var(--warn-hover);
-	--ease-out-expo: var(--ease);
+	--color-danger: var(--danger);
+	--shadow-raise: var(--raise);
+	--shadow-pop: var(--pop);
+	--shadow-float: var(--float);
+	--ease-snap: var(--ease);
+	--ease-spring: var(--spring);
 }
 
 @layer base {
 	html {
-		font-size: 14px;
+		scrollbar-gutter: stable;
+		-webkit-text-size-adjust: 100%;
 	}
 	body {
 		background: var(--bg);
-		color: var(--fg);
+		color: var(--ink);
 		font-family: var(--font-sans);
+		font-size: 14px;
+		line-height: 1.5;
 		-webkit-font-smoothing: antialiased;
-		font-feature-settings: 'cv11', 'ss01';
+		-moz-osx-font-smoothing: grayscale;
 	}
-	input[type='radio'] {
-		accent-color: var(--accent);
+	h1,
+	h2,
+	h3 {
+		text-wrap: balance;
 	}
-	:focus-visible {
-		outline: 2px solid var(--accent);
-		outline-offset: 2px;
+	a,
+	button,
+	label {
+		-webkit-tap-highlight-color: transparent;
 	}
 	::selection {
-		background: var(--accent-soft);
+		background: var(--lime);
+		color: var(--on-lime);
+	}
+	:focus-visible {
+		outline: 2px solid var(--ink);
+		outline-offset: 2px;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		*,
@@ -106,191 +152,499 @@
 }
 
 @layer components {
-	.card {
-		@apply rounded-xl border border-line bg-surface p-5;
+	/* ---------- Tipografi ---------- */
+	.display {
+		font-family: var(--font-display);
+		font-stretch: 86%;
+		font-weight: 620;
+		letter-spacing: -0.025em;
+		line-height: 1.05;
+		font-optical-sizing: auto;
 	}
-	.btn {
-		@apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap select-none active:translate-y-px active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
-		transition:
-			background-color 150ms var(--ease),
-			border-color 150ms var(--ease),
-			transform 120ms var(--ease),
-			box-shadow 150ms var(--ease);
-	}
-	.btn-primary {
-		@apply bg-accent text-on-accent hover:bg-accent-hover;
-		box-shadow:
-			inset 0 1px 0 rgb(255 255 255 / 0.14),
-			0 1px 2px var(--shadow);
-	}
-	.btn-secondary {
-		@apply border border-line bg-surface text-fg hover:border-faint hover:bg-subtle;
-	}
-	.btn-danger {
-		@apply bg-danger text-white hover:bg-danger-hover;
-	}
-	.btn-warning {
-		@apply bg-warn text-white hover:bg-warn-hover;
-	}
-	.input {
-		@apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-fg placeholder:text-faint hover:border-faint focus:border-accent focus:outline-none;
-		transition:
-			border-color 150ms var(--ease),
-			box-shadow 150ms var(--ease),
-			background-color 300ms var(--ease);
-	}
-	.input:focus {
-		box-shadow: 0 0 0 3px var(--accent-soft);
-	}
-	.label {
-		@apply mb-1.5 block text-xs font-medium text-muted;
-	}
-	.table-base {
-		@apply w-full text-left text-sm;
-	}
-	.table-base th {
-		@apply border-b border-line px-4 py-2.5 text-xs font-medium text-muted;
-	}
-	.table-base td {
-		@apply border-b border-line/60 px-4 py-3;
-	}
-	.table-base tbody tr:last-child td {
-		@apply border-b-0;
+	.eyebrow {
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 500;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--muted);
 	}
 	.num {
-		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
-		letter-spacing: -0.02em;
+		letter-spacing: -0.01em;
+	}
+	.code {
+		font-family: var(--font-mono);
+		font-size: 0.92em;
+		letter-spacing: -0.01em;
 	}
 
-	/* Checkbox kustom: centang "tergambar" saat dipilih. */
+	/* Stabilo: bidang lime "digoreskan" dari kiri ke kanan saat muncul. */
+	.mark {
+		background-image: linear-gradient(
+			transparent var(--mark-from),
+			var(--lime) var(--mark-from),
+			var(--lime) var(--mark-to),
+			transparent var(--mark-to)
+		);
+		background-repeat: no-repeat;
+		background-size: 0% 100%;
+		box-decoration-break: clone;
+		-webkit-box-decoration-break: clone;
+		padding-inline: 0.08em;
+		margin-inline: -0.08em;
+		animation: mark-in 900ms var(--ease) var(--mark-delay, 350ms) forwards;
+	}
+
+	/* ---------- Permukaan ---------- */
+	.panel {
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: 16px;
+		box-shadow: var(--raise);
+	}
+	.hairline {
+		border-color: var(--line);
+	}
+
+	/* ---------- Tombol ---------- */
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		height: 2.25rem;
+		padding-inline: 0.875rem;
+		border-radius: 10px;
+		font-size: 14px;
+		font-weight: 550;
+		white-space: nowrap;
+		user-select: none;
+		cursor: pointer;
+		transition:
+			background-color 160ms var(--ease),
+			border-color 160ms var(--ease),
+			color 160ms var(--ease),
+			box-shadow 200ms var(--ease),
+			transform 160ms var(--ease);
+	}
+	.btn:active:not(:disabled) {
+		transform: scale(0.97);
+	}
+	.btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.5;
+	}
+	.btn-sm {
+		height: 2rem;
+		padding-inline: 0.7rem;
+		font-size: 13px;
+		border-radius: 9px;
+	}
+	.btn-lg {
+		height: 2.75rem;
+		padding-inline: 1.15rem;
+		font-size: 15px;
+		border-radius: 12px;
+	}
+	.btn-primary {
+		background: var(--primary);
+		color: var(--on-primary);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 1px 2px rgb(0 0 0 / 0.12);
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: var(--primary-hover);
+		box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12), 0 6px 16px -6px rgb(0 0 0 / 0.35);
+	}
+	.btn-secondary {
+		background: var(--surface);
+		color: var(--ink);
+		border: 1px solid var(--line-strong);
+		box-shadow: var(--raise);
+	}
+	.btn-secondary:hover:not(:disabled) {
+		border-color: var(--faint);
+		background: color-mix(in oklab, var(--sunken) 55%, var(--surface));
+	}
+	.btn-ghost {
+		color: var(--muted);
+	}
+	.btn-ghost:hover:not(:disabled) {
+		color: var(--ink);
+		background: var(--sunken);
+	}
+	.btn-lime {
+		background: var(--lime);
+		color: var(--on-lime);
+		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--lime-deep) 60%, transparent);
+	}
+	.btn-lime:hover:not(:disabled) {
+		background: color-mix(in oklab, var(--lime) 88%, var(--lime-deep));
+	}
+	.btn-danger {
+		background: var(--danger);
+		color: #fff;
+	}
+	.btn-danger:hover:not(:disabled) {
+		background: color-mix(in oklab, var(--danger) 88%, black);
+	}
+	.btn-warn {
+		background: color-mix(in oklab, var(--warn) 14%, var(--surface));
+		color: var(--warn);
+		border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+	}
+	.btn-warn:hover:not(:disabled) {
+		background: color-mix(in oklab, var(--warn) 22%, var(--surface));
+	}
+	.icon-btn {
+		display: inline-grid;
+		place-items: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		border-radius: 10px;
+		color: var(--muted);
+		cursor: pointer;
+		transition:
+			background-color 160ms var(--ease),
+			color 160ms var(--ease),
+			transform 160ms var(--ease);
+	}
+	.icon-btn:hover {
+		background: var(--sunken);
+		color: var(--ink);
+	}
+	.icon-btn:active {
+		transform: scale(0.92);
+	}
+
+	/* ---------- Form ---------- */
+	.label {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-bottom: 0.4rem;
+		font-size: 13px;
+		font-weight: 550;
+		color: var(--ink-2);
+	}
+	.hint {
+		margin-top: 0.35rem;
+		font-size: 12px;
+		color: var(--muted);
+	}
+	.input {
+		width: 100%;
+		min-height: 2.5rem;
+		padding: 0.5rem 0.8rem;
+		border: 1px solid var(--line-strong);
+		border-radius: 10px;
+		background: var(--surface);
+		color: var(--ink);
+		font-size: 14px;
+		box-shadow: inset 0 1px 1px rgb(22 22 19 / 0.03);
+		transition:
+			border-color 160ms var(--ease),
+			box-shadow 200ms var(--ease),
+			background-color 400ms var(--ease);
+	}
+	.input::placeholder {
+		color: var(--faint);
+	}
+	.input:hover {
+		border-color: var(--faint);
+	}
+	.input:focus {
+		outline: none;
+		border-color: var(--ink);
+		box-shadow: var(--glow);
+	}
+	textarea.input {
+		min-height: 5.5rem;
+		resize: vertical;
+		field-sizing: content;
+	}
+	select.input {
+		appearance: none;
+		padding-right: 2.25rem;
+		background-image: var(--chevron);
+		background-repeat: no-repeat;
+		background-position: right 0.7rem center;
+		background-size: 16px;
+		cursor: pointer;
+	}
+	input[type='date'].input {
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Checkbox: kotak tinta, centang lime yang "tergambar". */
 	.check {
 		appearance: none;
 		display: inline-grid;
 		place-content: center;
 		flex-shrink: 0;
-		width: 1.15rem;
-		height: 1.15rem;
-		border: 1.5px solid var(--faint);
+		width: 1.125rem;
+		height: 1.125rem;
+		border: 1.5px solid var(--line-strong);
 		border-radius: 5px;
 		background: var(--surface);
 		cursor: pointer;
 		transition:
-			background-color 150ms var(--ease),
-			border-color 150ms var(--ease),
-			transform 120ms var(--ease);
+			background-color 160ms var(--ease),
+			border-color 160ms var(--ease),
+			transform 200ms var(--spring);
+	}
+	.check:hover {
+		border-color: var(--muted);
 	}
 	.check:active {
-		transform: scale(0.9);
+		transform: scale(0.85);
 	}
 	.check:checked {
-		background: var(--accent);
-		border-color: var(--accent);
+		background: var(--chip);
+		border-color: var(--chip);
 	}
 	.check::before {
 		content: '';
 		width: 0.55rem;
 		height: 0.3rem;
-		border-left: 2px solid var(--on-accent);
-		border-bottom: 2px solid var(--on-accent);
+		border-left: 2px solid var(--on-chip);
+		border-bottom: 2px solid var(--on-chip);
 		transform: translateY(-1px) rotate(-45deg) scale(0);
-		transition: transform 200ms var(--ease);
+		transition: transform 260ms var(--spring);
 	}
 	.check:checked::before {
 		transform: translateY(-1px) rotate(-45deg) scale(1);
 	}
 
-	/* Slip struk: tepi bawah bergerigi. Bayangan lewat drop-shadow di wrapper agar ikut bentuk gerigi. */
-	.slip-wrap {
-		filter: drop-shadow(0 0 0.6px var(--edge)) drop-shadow(0 10px 18px var(--shadow));
-	}
-	.slip {
+	/* Switch: kenop memantul ke sisi lain. */
+	.switch {
 		position: relative;
-		background: var(--surface);
-		border-radius: 12px 12px 0 0;
-		padding: 1.25rem 1.25rem 1.75rem;
-		--tooth: 7px;
-		mask:
-			conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(2 * var(--tooth)) 100%;
+		display: inline-flex;
+		flex-shrink: 0;
+		width: 2.25rem;
+		height: 1.3rem;
+		border-radius: 999px;
+		background: var(--line-strong);
+		cursor: pointer;
+		transition: background-color 200ms var(--ease);
 	}
-	.slip-rule {
-		border: 0;
-		border-top: 1.5px dashed var(--line);
-		margin: 0.875rem 0;
+	.switch::after {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: calc(1.3rem - 4px);
+		height: calc(1.3rem - 4px);
+		border-radius: 999px;
+		background: var(--surface);
+		box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+		transition: transform 320ms var(--spring);
+	}
+	.switch[aria-checked='true'] {
+		background: var(--chip);
+	}
+	.switch[aria-checked='true']::after {
+		transform: translateX(0.95rem);
+		background: var(--on-chip);
+	}
+	.switch:active::after {
+		width: calc(1.3rem + 2px);
+	}
+	.switch[aria-checked='true']:active::after {
+		transform: translateX(calc(0.95rem - 6px));
 	}
 
-	/* Stempel: muncul sekali dengan hentakan. */
-	.stamp {
-		display: inline-block;
-		padding: 0.3rem 0.8rem;
-		border: 2.5px solid currentColor;
-		border-radius: 6px;
+	/* ---------- Tabel ---------- */
+	.table {
+		width: 100%;
+		text-align: left;
+		border-collapse: separate;
+		border-spacing: 0;
+	}
+	.table th {
+		padding: 0.65rem 1rem;
+		border-bottom: 1px solid var(--line);
 		font-family: var(--font-mono);
-		font-size: 1.15rem;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		line-height: 1;
+		font-size: 11px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
 		text-transform: uppercase;
-		opacity: 0.82;
-		transform: rotate(-9deg);
-		box-shadow: inset 0 0 0 1.5px color-mix(in srgb, currentColor 35%, transparent);
-		animation: stamp-in 460ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
-		animation-delay: var(--stamp-delay, 150ms);
-		pointer-events: none;
+		color: var(--muted);
+		white-space: nowrap;
+	}
+	.table td {
+		padding: 0.8rem 1rem;
+		border-bottom: 1px solid var(--line);
+		vertical-align: middle;
+	}
+	.table tbody tr:last-child td {
+		border-bottom: 0;
+	}
+	.table tbody tr {
+		transition: background-color 140ms var(--ease);
+	}
+	.row-link {
+		cursor: pointer;
+	}
+	.row-link:hover {
+		background: color-mix(in oklab, var(--sunken) 60%, transparent);
+	}
+
+	/* ---------- Kecil-kecil ---------- */
+	.kbd {
+		display: inline-grid;
+		place-items: center;
+		min-width: 1.25rem;
+		height: 1.25rem;
+		padding-inline: 0.3rem;
+		border: 1px solid var(--line-strong);
+		border-bottom-width: 2px;
+		border-radius: 5px;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--muted);
+		background: var(--surface);
+	}
+	.tag-ocr {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		padding: 0.05rem 0.4rem;
+		border-radius: 999px;
+		background: var(--lime);
+		color: var(--on-lime);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		animation: pop-in 360ms var(--spring) both;
+	}
+	.avatar {
+		display: inline-grid;
+		place-items: center;
+		flex-shrink: 0;
+		border-radius: 999px;
+		background: var(--lime);
+		color: var(--on-lime);
+		font-family: var(--font-display);
+		font-weight: 650;
+		font-stretch: 90%;
 	}
 
 	.skeleton {
 		position: relative;
 		overflow: hidden;
 		border-radius: 6px;
-		background: var(--subtle);
+		background: var(--sunken);
 	}
 	.skeleton::after {
 		content: '';
 		position: absolute;
 		inset: 0;
 		transform: translateX(-100%);
-		background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 70%, transparent), transparent);
+		background: linear-gradient(
+			90deg,
+			transparent,
+			color-mix(in oklab, var(--surface) 65%, transparent),
+			transparent
+		);
 		animation: shimmer 1.4s infinite;
 	}
 
-	/* Garis pindai di atas foto struk selama OCR berjalan. */
-	.scan-line {
+	/* Muncul bertahap: pasang --d (delay) per elemen. */
+	.reveal {
+		animation: rise 520ms var(--ease) var(--d, 0ms) both;
+	}
+	.row-in {
+		animation: row-in 360ms var(--ease) var(--d, 0ms) both;
+	}
+	/* Bilah yang "tumbuh" dari kiri. */
+	.grow-x {
+		transform-origin: left;
+		animation: grow-x 1s var(--ease) var(--d, 0ms) both;
+	}
+
+	/* Berkas cahaya yang menyapu struk selama OCR berjalan. */
+	.scan-beam {
 		position: absolute;
 		inset-inline: 0;
 		top: 0;
-		height: 36%;
-		background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent) 22%, transparent) 85%, var(--accent));
-		border-bottom: 2px solid var(--accent);
-		animation: scan 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+		height: 30%;
+		background: linear-gradient(
+			to bottom,
+			transparent,
+			color-mix(in oklab, var(--lime) 35%, transparent) 80%,
+			var(--lime)
+		);
+		box-shadow: 0 2px 12px var(--lime);
+		animation: scan 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
 		pointer-events: none;
 	}
-
-	/* Field yang baru diisi OCR berkedip lembut sekali, supaya karyawan tahu apa yang berubah. */
 	.ocr-flash {
-		animation: ocr-flash 1.4s var(--ease);
+		animation: ocr-flash 1.6s var(--ease);
 	}
-
 	.shake {
 		animation: shake 380ms var(--ease);
 	}
-
-	.print {
-		animation: print 1.2s cubic-bezier(0.3, 0.7, 0.2, 1) 250ms both;
-	}
 }
 
-@keyframes stamp-in {
+/* ---------- View Transitions: pindah halaman & ganti tema ---------- */
+.vt-page {
+	view-transition-name: page;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation: none;
+	mix-blend-mode: normal;
+}
+::view-transition-old(page) {
+	animation: vt-out 160ms var(--ease) both;
+}
+::view-transition-new(page) {
+	animation: vt-in 340ms var(--ease) both;
+}
+:root.vt-theme .vt-page {
+	view-transition-name: none;
+}
+
+@keyframes vt-out {
+	to {
+		opacity: 0;
+		transform: translateY(-4px);
+	}
+}
+@keyframes vt-in {
 	from {
 		opacity: 0;
-		transform: rotate(-9deg) scale(1.9);
+		transform: translateY(10px);
 	}
-	60% {
-		opacity: 0.9;
-	}
+}
+@keyframes mark-in {
 	to {
-		opacity: 0.82;
-		transform: rotate(-9deg) scale(1);
+		background-size: 100% 100%;
+	}
+}
+@keyframes rise {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+}
+@keyframes row-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+@keyframes grow-x {
+	from {
+		transform: scaleX(0);
+	}
+}
+@keyframes pop-in {
+	from {
+		opacity: 0;
+		transform: scale(0.6);
 	}
 }
 @keyframes shimmer {
@@ -303,14 +657,14 @@
 		transform: translateY(-100%);
 	}
 	to {
-		transform: translateY(180%);
+		transform: translateY(240%);
 	}
 }
 @keyframes ocr-flash {
 	0%,
-	30% {
-		background-color: var(--accent-soft);
-		border-color: var(--accent);
+	35% {
+		background-color: color-mix(in oklab, var(--lime) 45%, var(--surface));
+		border-color: var(--lime-deep);
 	}
 }
 @keyframes shake {
@@ -323,13 +677,27 @@
 		transform: translateX(6px);
 	}
 }
-@keyframes print {
-	from {
-		transform: translateY(-100%);
-	}
-}
 @keyframes toast-timer {
 	to {
 		transform: scaleX(0);
+	}
+}
+@keyframes pie-in {
+	from {
+		stroke-dasharray: 0 100;
+	}
+}
+@keyframes halo {
+	0% {
+		box-shadow: 0 0 0 0 color-mix(in oklab, var(--lime) 85%, transparent);
+	}
+	70%,
+	100% {
+		box-shadow: 0 0 0 9px color-mix(in oklab, var(--lime) 0%, transparent);
+	}
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
 	}
 }

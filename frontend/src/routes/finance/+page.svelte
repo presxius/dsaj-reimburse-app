@@ -1,8 +1,13 @@
 <script lang="ts">
 	import ReimbursementTable from '#lib/components/ReimbursementTable.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
-<h1 class="mb-6 text-2xl font-semibold tracking-tight">Pembayaran Reimburse</h1>
+<PageHeader
+	eyebrow="Finance"
+	title="Pembayaran Reimburse"
+	description="Pengajuan yang sudah disetujui atasan, siap diproses dan dicatat pembayarannya."
+/>
 
 <ReimbursementTable
 	tabs={[

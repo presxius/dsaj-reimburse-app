@@ -16,9 +16,16 @@ DEFAULT_RULES = {
     # Baris yang mengandung kata ini bukan total akhir.
     "total_exclude": ["subtotal", "sub total", "sub-total", "total item", "total qty",
                       "total disc", "diskon", "kembali", "kembalian", "change", "tunai", "cash"],
+    # Nama layanan aplikasi yang tertulis di struk/screenshot (mis. "pesan GoRide").
+    # Sengaja tanpa "Gojek"/"Grab": sering muncul juga di bukti bayar GoPay/OVO ke merchant lain.
+    "merchant_brands": ["GoRide", "GoCar", "GoFood", "GrabBike", "GrabCar", "GrabFood",
+                        "ShopeeFood", "Maxim", "inDrive"],
+    # Label nama merchant pada bukti transaksi bank/e-wallet (mis. SeaBank: "Ke <merchant>").
+    "merchant_labels": ["nama merchant", "merchant", "nama penerima", "penerima", "ke"],
     # Baris yang tidak mungkin berupa nama merchant.
     "merchant_exclude": ["jl.", "jl ", "jalan", "telp", "tel.", "phone", "npwp", "struk",
-                         "receipt", "invoice", "no.", "kasir", "cashier", "www", "http"],
+                         "receipt", "invoice", "no.", "kasir", "cashier", "www", "http",
+                         "bukti", "reimburs"],
     "merchant_scan_lines": 5,
 }
 
@@ -30,6 +37,7 @@ MONTHS = {
 _DATE_NUMERIC = re.compile(r"\b(\d{1,4})[/.\-](\d{1,2})[/.\-](\d{2,4})\b")
 _DATE_TEXT = re.compile(r"\b(\d{1,2})[\s\-]+([A-Za-z]{3,9})[\s\-]+(\d{2,4})\b")
 _AMOUNT = re.compile(r"\d[\d.,]*")
+_WORD = re.compile(r"[^\W\d_]{3,}")  # kata minimal 3 huruf
 
 
 def parse_receipt(lines, rules=None):
@@ -43,17 +51,41 @@ def parse_receipt(lines, rules=None):
 
 
 def find_merchant(lines, rules):
+    # 1) Nama layanan aplikasi. Lebih dari satu layanan berbeda = ambigu.
+    text = "\n".join(lines)
+    brands = [b for b in rules["merchant_brands"]
+              if re.search(rf"(?<![^\W\d_]){re.escape(b)}(?![^\W\d_])", text, re.IGNORECASE)]
+    if brands:
+        return brands[0] if len(brands) == 1 else None
+
+    # 2) Nilai berlabel, mis. "Ke Nasi Goreng Suroboyo" atau "Merchant: Kopi Senja".
+    for label in rules["merchant_labels"]:
+        pattern = re.compile(rf"{re.escape(label)}(?:\s*:\s*|\s+)(.+)", re.IGNORECASE)
+        values = {m.group(1).strip() for m in map(pattern.match, lines) if m}
+        values = {v for v in values if _looks_like_merchant(v, rules)}
+        if len(values) == 1:
+            return values.pop()[:200]
+        if len(values) > 1:
+            return None  # ambigu
+
+    # 3) Struk kertas: nama toko biasanya di baris paling atas.
     for line in lines[: rules["merchant_scan_lines"]]:
-        low = line.lower()
-        letters = sum(c.isalpha() for c in line)
-        if letters < 3 or letters < len(line.replace(" ", "")) * 0.7:
-            continue
-        if any(k in low for k in rules["merchant_exclude"]):
-            continue
-        if _find_dates_in(line):
-            continue
-        return line[:200]
+        if _looks_like_merchant(line, rules):
+            return line[:200]
     return None
+
+
+def _looks_like_merchant(line, rules):
+    if line.startswith(("←", "<", "‹", "«")):  # bar navigasi pada screenshot aplikasi
+        return False
+    # Wajib ada kata >= 3 huruf (menyaring sisa status bar HP seperti "KB/d") dan mayoritas huruf.
+    letters = sum(c.isalpha() for c in line)
+    if not _WORD.search(line) or letters < len(line.replace(" ", "")) * 0.7:
+        return False
+    low = line.lower()
+    if any(k in low for k in rules["merchant_exclude"]):
+        return False
+    return not _find_dates_in(line)
 
 
 def _to_year(y):

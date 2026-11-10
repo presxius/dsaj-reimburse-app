@@ -1,8 +1,13 @@
 <script lang="ts">
 	import ReimbursementTable from '#lib/components/ReimbursementTable.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 </script>
 
-<h1 class="mb-6 text-2xl font-semibold tracking-tight">Persetujuan Pengajuan</h1>
+<PageHeader
+	eyebrow="Atasan langsung"
+	title="Persetujuan Pengajuan"
+	description="Pengajuan tim Anda yang sudah diverifikasi admin dan menunggu keputusan."
+/>
 
 <ReimbursementTable
 	tabs={[

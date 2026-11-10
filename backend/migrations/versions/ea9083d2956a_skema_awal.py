@@ -38,8 +38,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_users_email'), ['email'], unique=True)
+    op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
 
     op.create_table('activity_logs',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -52,8 +51,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    with op.batch_alter_table('activity_logs', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_activity_logs_created_at'), ['created_at'], unique=False)
+    op.create_index(op.f('ix_activity_logs_created_at'), 'activity_logs', ['created_at'], unique=False)
 
     op.create_table('reimbursements',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -73,11 +71,10 @@ def upgrade():
     sa.ForeignKeyConstraint(['employee_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    with op.batch_alter_table('reimbursements', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_reimbursements_category'), ['category'], unique=False)
-        batch_op.create_index(batch_op.f('ix_reimbursements_code'), ['code'], unique=True)
-        batch_op.create_index(batch_op.f('ix_reimbursements_employee_id'), ['employee_id'], unique=False)
-        batch_op.create_index(batch_op.f('ix_reimbursements_status'), ['status'], unique=False)
+    op.create_index(op.f('ix_reimbursements_category'), 'reimbursements', ['category'], unique=False)
+    op.create_index(op.f('ix_reimbursements_code'), 'reimbursements', ['code'], unique=True)
+    op.create_index(op.f('ix_reimbursements_employee_id'), 'reimbursements', ['employee_id'], unique=False)
+    op.create_index(op.f('ix_reimbursements_status'), 'reimbursements', ['status'], unique=False)
 
     op.create_table('approvals',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -92,8 +89,7 @@ def upgrade():
     sa.ForeignKeyConstraint(['reimbursement_id'], ['reimbursements.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    with op.batch_alter_table('approvals', schema=None) as batch_op:
-        batch_op.create_index(batch_op.f('ix_approvals_reimbursement_id'), ['reimbursement_id'], unique=False)
+    op.create_index(op.f('ix_approvals_reimbursement_id'), 'approvals', ['reimbursement_id'], unique=False)
 
     op.create_table('payments',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -146,23 +142,19 @@ def downgrade():
     op.drop_table('ocr_results')
     op.drop_table('receipts')
     op.drop_table('payments')
-    with op.batch_alter_table('approvals', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_approvals_reimbursement_id'))
+    op.drop_index(op.f('ix_approvals_reimbursement_id'), table_name='approvals')
 
     op.drop_table('approvals')
-    with op.batch_alter_table('reimbursements', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_reimbursements_status'))
-        batch_op.drop_index(batch_op.f('ix_reimbursements_employee_id'))
-        batch_op.drop_index(batch_op.f('ix_reimbursements_code'))
-        batch_op.drop_index(batch_op.f('ix_reimbursements_category'))
+    op.drop_index(op.f('ix_reimbursements_status'), table_name='reimbursements')
+    op.drop_index(op.f('ix_reimbursements_employee_id'), table_name='reimbursements')
+    op.drop_index(op.f('ix_reimbursements_code'), table_name='reimbursements')
+    op.drop_index(op.f('ix_reimbursements_category'), table_name='reimbursements')
 
     op.drop_table('reimbursements')
-    with op.batch_alter_table('activity_logs', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_activity_logs_created_at'))
+    op.drop_index(op.f('ix_activity_logs_created_at'), table_name='activity_logs')
 
     op.drop_table('activity_logs')
-    with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f('ix_users_email'))
+    op.drop_index(op.f('ix_users_email'), table_name='users')
 
     op.drop_table('users')
     op.drop_table('departments')

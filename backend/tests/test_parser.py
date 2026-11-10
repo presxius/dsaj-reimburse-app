@@ -44,6 +44,68 @@ def test_ambiguous_values_are_not_guessed():
     assert result["total_amount"] is None
 
 
+def test_bank_receipt_uses_labeled_merchant():
+    # Hasil OCR bukti QRIS SeaBank (data pribadi dianonimkan). Baris pertama = logo bank.
+    lines = [
+        "SeaBank",
+        "Bukti Transaksi",
+        "Rp 17.000",
+        "Dari Rina Karyawan",
+        "SeaBank: ********1234",
+        "Ke Nasi Goreng Suroboyo K...",
+        "Jakarta Selatan",
+        "Nama Acquirer OVO",
+        "Metode Pembayaran SeaBank",
+        "Jumlah Rp 17.000",
+        "No. Transaksi 2026101600000000000000001",
+        "Waktu Transaksi 16 Okt 2026, 12:49",
+        "Resi ini merupakan bukti transaksi yang sah.",
+    ]
+    assert parse_receipt(lines) == {
+        "merchant": "Nasi Goreng Suroboyo K...",
+        "transaction_date": date(2026, 10, 16),
+        "total_amount": Decimal("17000.00"),
+    }
+
+
+def test_app_screenshot_uses_service_name():
+    # Hasil OCR screenshot email GoRide di dokumen form reimburse (data pribadi dianonimkan).
+    lines = [
+        "10:53 X … 0,52 73%",
+        "KB/d",
+        "← FORM REIMBURS...",
+        "FORM REIMBURSEMENT",
+        "Rabu, 04 - 11 - 2026",
+        "gorider CEPAAAT Rabu. 4 November 2026",
+        "ID pesanan: RB-0000000-00000000",
+        "Makasih udah pesan GoRide CEPAAAT",
+        "Total dibayar Rp32.500",
+        "Biaya perjalanan Rp27.000",
+        "Biaya jasa aplikasi Rp4.500",
+        "Total pembayaran Rp32.500",
+        "Dibayar pakai GoPay Rp32.500",
+        "Budi Driver Dijemput 4 November 2026",
+        "Sampai 4 November 2026 jam",
+        "Total : 32.500",
+    ]
+    assert parse_receipt(lines) == {
+        "merchant": "GoRide",
+        "transaction_date": date(2026, 11, 4),
+        "total_amount": Decimal("32500.00"),
+    }
+
+
+def test_screenshot_chrome_is_not_a_merchant():
+    lines = ["10:53 X … 0,52 73%", "KB/d", "← Detail Pesanan", "FORM REIMBURSEMENT",
+             "Total Rp 20.000"]
+    assert parse_receipt(lines)["merchant"] is None
+
+
+def test_ambiguous_merchant_is_not_guessed():
+    assert parse_receipt(["Ke Toko Satu", "Ke Toko Dua"])["merchant"] is None
+    assert parse_receipt(["Pesan GoRide", "Promo GoFood"])["merchant"] is None
+
+
 def test_parse_amount_formats():
     assert parse_amount("25.000") == Decimal("25000.00")
     assert parse_amount("25,000.00") == Decimal("25000.00")

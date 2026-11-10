@@ -1,0 +1,8 @@
+# Development: buka PostgreSQL ke localhost agar backend dari venv bisa terhubung.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db
+# DATABASE_URL=postgresql+psycopg://reimburse:<POSTGRES_PASSWORD>@localhost:5432/reimburse
+
+services:
+  db:
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"

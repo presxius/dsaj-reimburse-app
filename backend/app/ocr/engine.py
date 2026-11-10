@@ -1,4 +1,5 @@
 """Pembungkus PaddleOCR. Model dimuat sekali (lazy) saat pertama dipakai."""
+import os
 import threading
 
 _engine = None
@@ -9,7 +10,7 @@ class OcrUnavailable(Exception):
     pass
 
 
-def _get_engine(lang):
+def _get_engine(model_size):
     global _engine
     with _lock:
         if _engine is None:
@@ -17,13 +18,26 @@ def _get_engine(lang):
                 from paddleocr import PaddleOCR
             except ImportError as e:
                 raise OcrUnavailable("PaddleOCR belum terpasang di server.") from e
-            _engine = PaddleOCR(lang=lang)
+            _engine = PaddleOCR(
+                # Model PP-OCRv6 (tiny/small/medium) mencakup huruf Latin, cukup untuk struk.
+                text_detection_model_name=f"PP-OCRv6_{model_size}_det",
+                text_recognition_model_name=f"PP-OCRv6_{model_size}_rec",
+                # Default pipeline juga memuat model orientasi dokumen, unwarping (UVDoc), dan
+                # orientasi baris; tidak perlu untuk struk yang tegak dan memakan banyak RAM.
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                # oneDNN (MKLDNN) di PaddlePaddle 3.3 CPU gagal saat inferensi
+                # ("ConvertPirAttribute2RuntimeAttribute not support"); matikan.
+                enable_mkldnn=False,
+                cpu_threads=os.cpu_count() or 1,  # default 10, berlebihan di server kecil
+            )
         return _engine
 
 
-def read_text(image, lang="en"):
+def read_text(image, model_size="small"):
     """Kembalikan daftar baris teks, berurutan dari atas ke bawah."""
-    engine = _get_engine(lang)
+    engine = _get_engine(model_size)
     with _lock:  # instance PaddleOCR tidak thread-safe
         if hasattr(engine, "predict"):  # PaddleOCR 3.x
             result = engine.predict(image)

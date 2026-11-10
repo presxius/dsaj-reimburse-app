@@ -1,5 +1,9 @@
 # Dependensi OCR (opsional). Tanpa paket ini aplikasi tetap berjalan;
 # endpoint OCR akan mengembalikan status "failed" dan form diisi manual.
-opencv-python-headless
-paddlepaddle
-paddleocr
+# OpenCV ikut terpasang lewat paddlex (opencv-contrib-python, butuh libGL). Jangan tambahkan
+# paket opencv lain: keduanya menulis ke folder cv2 yang sama dan saling menimpa.
+# Versi dipin karena nama model PP-OCRv6 dan workaround oneDNN di app/ocr/engine.py
+# bergantung pada versi ini.
+paddlepaddle==3.3.1
+paddleocr==3.7.0
+paddlex==3.7.2

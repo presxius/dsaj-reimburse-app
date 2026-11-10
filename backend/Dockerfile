@@ -14,14 +14,15 @@ WORKDIR /app
 COPY requirements.txt requirements-ocr.txt ./
 RUN pip install -r requirements.txt \
     && if [ "$WITH_OCR" = "1" ]; then \
-         apt-get update && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 \
+         apt-get update && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 libgl1 \
          && rm -rf /var/lib/apt/lists/* \
          && pip install -r requirements-ocr.txt; \
        fi
 
 COPY . .
 
-RUN useradd --system --uid 1000 --home /app app \
+# Home terpisah yang bisa ditulisi: PaddleOCR mengunduh model ke ~/.paddlex saat pertama dipakai.
+RUN useradd --system --uid 1000 --create-home --home-dir /home/app app \
     && mkdir -p /app/storage/receipts \
     && chown -R app:app /app/storage \
     && chmod +x /app/docker-entrypoint.sh
@@ -30,5 +31,6 @@ USER app
 EXPOSE 5000
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-# Jumlah worker dari WEB_CONCURRENCY. Timeout panjang karena OCR berjalan sinkron.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--timeout", "120", "--access-logfile", "-", "wsgi:app"]
+# Jumlah worker dari WEB_CONCURRENCY; tiap worker memuat model OCR sendiri, jadi tambah thread
+# (bukan worker) agar request lain tetap dilayani saat OCR berjalan. Timeout panjang untuk OCR.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--threads", "4", "--timeout", "120", "--access-logfile", "-", "wsgi:app"]

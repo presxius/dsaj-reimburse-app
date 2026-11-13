@@ -5,6 +5,7 @@ from sqlalchemy import or_
 
 from ..extensions import db
 from ..models import Category, Receipt, Reimbursement, Role, Status, User
+from ..services import duplicates
 from ..services.access import can_view, scoped_query
 from ..services.workflow import available_actions, transition
 from ..utils.auth import log_activity, login_required, roles_required
@@ -94,13 +95,19 @@ def create_reimbursement():
     return jsonify(r.to_dict(detail=True)), 201
 
 
+def _detail(r):
+    data = r.to_dict(detail=True)
+    data["actions"] = available_actions(g.user, r)
+    # Hanya pengajuan yang boleh dilihat pengguna ini yang ditampilkan.
+    data["duplicates"] = [duplicates.to_dict(d, reason) for d, reason in duplicates.find_duplicates(r)
+                          if can_view(g.user, d)]
+    return data
+
+
 @bp.get("/<int:rid>")
 @login_required
 def get_reimbursement(rid):
-    r = _get_visible(rid)
-    data = r.to_dict(detail=True)
-    data["actions"] = available_actions(g.user, r)
-    return jsonify(data)
+    return jsonify(_detail(_get_visible(rid)))
 
 
 @bp.put("/<int:rid>")
@@ -126,6 +133,4 @@ def update_reimbursement(rid):
 def do_action(rid, action):
     r = _get_visible(rid)
     transition(g.user, r, action, request.get_json(silent=True) or {})
-    data = r.to_dict(detail=True)
-    data["actions"] = available_actions(g.user, r)
-    return jsonify(data)
+    return jsonify(_detail(r))

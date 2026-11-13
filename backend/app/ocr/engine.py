@@ -36,7 +36,7 @@ def _get_engine(model_size):
 
 
 def read_text(image, model_size="small"):
-    """Kembalikan daftar baris teks, berurutan dari atas ke bawah."""
+    """Kembalikan (baris teks dari atas ke bawah, skor keyakinan 0-1 per baris atau None)."""
     engine = _get_engine(model_size)
     with _lock:  # instance PaddleOCR tidak thread-safe
         if hasattr(engine, "predict"):  # PaddleOCR 3.x
@@ -47,31 +47,42 @@ def read_text(image, model_size="small"):
 
 
 def _to_lines(result):
-    items = []  # (y, x, text)
+    items = []  # (y, x, text, score)
     for page in result or []:
         if page is None:
             continue
         if isinstance(page, dict) or hasattr(page, "get"):  # format 3.x
             texts = page.get("rec_texts") or []
+            scores = page.get("rec_scores")
             boxes = page.get("rec_polys")
             if boxes is None:
                 boxes = page.get("dt_polys")
             for i, text in enumerate(texts):
                 box = boxes[i] if boxes is not None and i < len(boxes) else [[0, i]]
-                items.append((float(box[0][1]), float(box[0][0]), text))
+                score = float(scores[i]) if scores is not None and i < len(scores) else None
+                items.append((float(box[0][1]), float(box[0][0]), text, score))
         else:  # format 2.x: [[box, (text, conf)], ...]
-            for box, (text, _conf) in page:
-                items.append((float(box[0][1]), float(box[0][0]), text))
+            for box, (text, conf) in page:
+                items.append((float(box[0][1]), float(box[0][0]), text, float(conf)))
     return _group_rows(items)
 
 
 def _group_rows(items, tolerance=12):
-    """Gabungkan potongan teks yang sejajar secara horizontal menjadi satu baris."""
-    items.sort()
+    """Gabungkan potongan teks yang sejajar secara horizontal menjadi satu baris.
+
+    Skor baris = skor potongan terendah, agar satu kata yang buram tetap terlihat.
+    """
+    items.sort(key=lambda it: (it[0], it[1]))
     rows = []
-    for y, x, text in items:
+    for y, x, text, score in items:
         if rows and abs(rows[-1][0] - y) <= tolerance:
-            rows[-1][1].append((x, text))
+            rows[-1][1].append((x, text, score))
         else:
-            rows.append([y, [(x, text)]])
-    return [" ".join(t for _, t in sorted(parts)) for _, parts in rows]
+            rows.append([y, [(x, text, score)]])
+    lines, scores = [], []
+    for _, parts in rows:
+        parts.sort(key=lambda p: p[0])
+        lines.append(" ".join(t for _, t, _ in parts))
+        known = [s for _, _, s in parts if s is not None]
+        scores.append(min(known) if known else None)
+    return lines, scores

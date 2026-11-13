@@ -519,6 +519,11 @@
 		letter-spacing: 0.04em;
 		animation: pop-in 360ms var(--spring) both;
 	}
+	/* Field OCR dengan skor keyakinan rendah: perlu dicocokkan manual. */
+	.tag-ocr-low {
+		background: color-mix(in oklab, var(--warn) 16%, var(--surface));
+		color: var(--warn);
+	}
 	.avatar {
 		display: inline-grid;
 		place-items: center;

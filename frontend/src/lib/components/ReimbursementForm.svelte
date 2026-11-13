@@ -13,10 +13,17 @@
 	import AmountInput from './AmountInput.svelte';
 	import Spinner from './Spinner.svelte';
 	import { api } from '#lib/services/api.ts';
-	import { formatDate, formatRupiah } from '#lib/labels.ts';
+	import { OCR_LOW_CONFIDENCE, STATUS_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
 	import { ease, ms } from '#lib/motion.ts';
 	import { notify, notifyError } from '#lib/session.svelte.ts';
-	import type { Category, Receipt, ReimbursementDetail } from '#lib/types/index.ts';
+	import type {
+		Category,
+		DuplicateMatch,
+		OcrField,
+		Receipt,
+		ReimbursementDetail,
+		UploadedReceipt
+	} from '#lib/types/index.ts';
 
 	let {
 		initial,
@@ -44,10 +51,25 @@
 	let saving = $state<'draft' | 'submit' | null>(null);
 	let ocrConfirmed = $state(false);
 	let fromOcr = $state<Record<string, boolean>>({});
+	let duplicates = $state<DuplicateMatch[]>([]);
 	let dragging = $state(false);
 	let fileInput: HTMLInputElement;
 
 	const ocr = $derived(receipt?.ocr ?? null);
+	const confidence = (f: OcrField) => ocr?.confidence?.[f] ?? null;
+	const isLow = (f: OcrField) => {
+		const c = confidence(f);
+		return c != null && c < OCR_LOW_CONFIDENCE;
+	};
+	const ocrRows = $derived.by((): { k: string; f: OcrField; v: string | null }[] => {
+		if (!ocr) return [];
+		return [
+			{ k: 'Merchant', f: 'merchant', v: ocr.merchant },
+			{ k: 'Tanggal', f: 'transaction_date', v: ocr.transaction_date ? formatDate(ocr.transaction_date) : null },
+			{ k: 'Total', f: 'total_amount', v: ocr.total_amount != null ? formatRupiah(ocr.total_amount) : null }
+		];
+	});
+	const anyLow = $derived(ocrRows.some((r) => r.v && isLow(r.f)));
 	const needsConfirm = $derived(ocr?.status === 'completed');
 	const busy = $derived(!!saving || uploading);
 
@@ -73,11 +95,15 @@
 		uploading = true;
 		ocrConfirmed = false;
 		fromOcr = {};
+		duplicates = [];
 		try {
 			const fd = new FormData();
 			fd.append('file', file);
-			receipt = await api.post<Receipt>(useOcr ? '/ocr/scan' : '/receipts', fd);
-			const r = receipt.ocr;
+			const uploaded = await api.post<UploadedReceipt>(useOcr ? '/ocr/scan' : '/receipts', fd);
+			receipt = uploaded;
+			// Saat merevisi, pengajuan ini sendiri bukan duplikat.
+			duplicates = (uploaded.duplicates ?? []).filter((d) => d.id !== init?.id);
+			const r = uploaded.ocr;
 			if (r?.status === 'completed') {
 				// Isi hanya field yang berhasil dibaca; sisanya biarkan untuk diisi manual.
 				if (r.merchant) merchant = r.merchant;
@@ -150,8 +176,15 @@
 	</h2>
 {/snippet}
 
-{#snippet ocrTag(key: string)}
-	{#if fromOcr[key]}<span class="tag-ocr" title="Diisi dari hasil OCR">OCR</span>{/if}
+{#snippet ocrTag(key: string, field: OcrField)}
+	{#if fromOcr[key]}
+		{#if isLow(field)}
+			<span class="tag-ocr tag-ocr-low"
+				title="OCR kurang yakin ({Math.round((confidence(field) ?? 0) * 100)}%). Cocokkan dengan struk.">OCR · cek</span>
+		{:else}
+			<span class="tag-ocr" title="Diisi dari hasil OCR">OCR</span>
+		{/if}
+	{/if}
 {/snippet}
 
 <form
@@ -244,18 +277,26 @@
 							<span class="tag-ocr">DRAFT</span>
 						</div>
 						<dl class="space-y-2 text-[13.5px]">
-							{#each [['Merchant', ocr.merchant], ['Tanggal', ocr.transaction_date ? formatDate(ocr.transaction_date) : null], ['Total', ocr.total_amount != null ? formatRupiah(ocr.total_amount) : null]] as [k, v], i (k)}
+							{#each ocrRows as { k, f, v }, i (k)}
+								{@const c = v ? confidence(f) : null}
 								<div class="row-in flex items-center gap-3" style="--d: {i * 70}ms">
-									<span class="grid size-5 shrink-0 place-items-center rounded-full {v ? 'bg-lime text-on-lime' : 'bg-line text-faint'}">
-										{#if v}<Check size={11} weight="bold" />{:else}<span class="h-[1.5px] w-2 rounded bg-current"></span>{/if}
+									<span class="grid size-5 shrink-0 place-items-center rounded-full {v ? (isLow(f) ? 'bg-warn/20 text-warn' : 'bg-lime text-on-lime') : 'bg-line text-faint'}">
+										{#if v && isLow(f)}<WarningCircle size={12} weight="bold" />{:else if v}<Check size={11} weight="bold" />{:else}<span class="h-[1.5px] w-2 rounded bg-current"></span>{/if}
 									</span>
 									<dt class="w-20 shrink-0 text-muted">{k}</dt>
-									<dd class="min-w-0 truncate {v ? 'font-medium text-ink' : 'text-faint italic'} {k === 'Total' ? 'num' : ''}">
+									<dd class="min-w-0 flex-1 truncate {v ? 'font-medium text-ink' : 'text-faint italic'} {k === 'Total' ? 'num' : ''}">
 										{v ?? 'tidak terbaca'}
 									</dd>
+									{#if c != null}
+										<span class="num shrink-0 text-[11.5px] {isLow(f) ? 'font-semibold text-warn' : 'text-faint'}"
+											title="Skor keyakinan OCR">{Math.round(c * 100)}%</span>
+									{/if}
 								</div>
 							{/each}
 						</dl>
+						{#if anyLow}
+							<p class="mt-3 text-[12px] text-warn">Field bertanda kuning kurang jelas terbaca. Cocokkan dengan struk.</p>
+						{/if}
 						{#if ocr.raw_text}
 							<details class="group mt-3 border-t border-line pt-3">
 								<summary class="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink">
@@ -273,6 +314,25 @@
 				{/if}
 			</div>
 		{/if}
+
+		{#if duplicates.length > 0 && !uploading}
+			<div class="mt-4 flex items-start gap-3 rounded-xl border border-warn/35 bg-warn/[0.07] p-4 text-[13.5px] text-ink"
+				transition:slide={{ duration: ms(320), easing: ease }}>
+				<WarningCircle size={18} weight="fill" class="mt-px shrink-0 text-warn" />
+				<div>
+					<p class="font-semibold">Struk ini sudah pernah diajukan.</p>
+					<ul class="mt-1 space-y-0.5 text-muted">
+						{#each duplicates as d (d.id)}
+							<li>
+								<a href="/reimburse/{d.id}" target="_blank" rel="noopener" class="code font-medium text-ink underline underline-offset-2">{d.code}</a>
+								· {STATUS_LABEL[d.status]} · <span class="num">{formatRupiah(d.amount)}</span>
+							</li>
+						{/each}
+					</ul>
+					<p class="mt-1.5 text-[12.5px] text-muted">Pastikan ini bukan pengajuan ganda. Admin juga akan melihat peringatan ini.</p>
+				</div>
+			</div>
+		{/if}
 	</section>
 
 	<!-- Kolom kanan: data pengajuan -->
@@ -285,18 +345,18 @@
 				<Segmented options={CATEGORIES} bind:value={category} label="Kategori" />
 			</div>
 			<div>
-				<label class="label" for="merchant">Merchant / penyedia {@render ocrTag('merchant')}</label>
+				<label class="label" for="merchant">Merchant / penyedia {@render ocrTag('merchant', 'merchant')}</label>
 				<input id="merchant" class="input {fromOcr.merchant ? 'ocr-flash' : ''}" bind:value={merchant}
 					placeholder="mis. Blue Taxi, Kopi Senja" />
 			</div>
 			<div class="grid gap-5 sm:grid-cols-2">
 				<div>
-					<label class="label" for="date">Tanggal transaksi <span class="text-danger">*</span> {@render ocrTag('date')}</label>
+					<label class="label" for="date">Tanggal transaksi <span class="text-danger">*</span> {@render ocrTag('date', 'transaction_date')}</label>
 					<input id="date" type="date" class="input {fromOcr.date ? 'ocr-flash' : ''}" max={today}
 						bind:value={transactionDate} required />
 				</div>
 				<div>
-					<label class="label" for="amount">Nominal <span class="text-danger">*</span> {@render ocrTag('amount')}</label>
+					<label class="label" for="amount">Nominal <span class="text-danger">*</span> {@render ocrTag('amount', 'total_amount')}</label>
 					<AmountInput id="amount" bind:value={amount} required class={fromOcr.amount ? 'ocr-flash' : ''} />
 				</div>
 			</div>

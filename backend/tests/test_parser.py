@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
 
-from app.ocr.parser import parse_amount, parse_receipt
+from app.ocr.engine import _group_rows
+from app.ocr.parser import (field_confidence, parse_amount, parse_receipt,
+                             parse_receipt_with_sources)
 
 
 def test_typical_indonesian_receipt():
@@ -117,3 +119,29 @@ def test_custom_rules():
     lines = ["WARUNG", "BAYAR 15.000"]
     assert parse_receipt(lines)["total_amount"] is None
     assert parse_receipt(lines, {"total_keywords": ["bayar"]})["total_amount"] == Decimal("15000.00")
+
+
+def test_sources_point_to_original_lines():
+    # Baris kosong dilewati parser, tetapi indeks tetap merujuk ke daftar asli.
+    lines = ["KOPI SENJA", "", "12/03/2026", "TOTAL", "Rp 55.000"]
+    fields, sources = parse_receipt_with_sources(lines)
+    assert fields["total_amount"] == Decimal("55000.00")
+    assert sources == {"merchant": [0], "transaction_date": [2], "total_amount": [4]}
+
+
+def test_missing_fields_have_no_source():
+    _, sources = parse_receipt_with_sources(["1234 5678"])
+    assert sources == {}
+
+
+def test_field_confidence_uses_best_source_line():
+    sources = {"merchant": [0], "transaction_date": [1, 2], "total_amount": [3]}
+    scores = [0.991, 0.6, 0.95, None]
+    assert field_confidence(sources, scores) == {
+        "merchant": 0.991, "transaction_date": 0.95, "total_amount": None}
+
+
+def test_engine_row_score_is_weakest_fragment():
+    lines, scores = _group_rows([(10, 50, "55.000", 0.7), (11, 0, "TOTAL", 0.99), (40, 0, "X", None)])
+    assert lines == ["TOTAL 55.000", "X"]
+    assert scores == [0.7, None]

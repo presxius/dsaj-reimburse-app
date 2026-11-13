@@ -1,4 +1,4 @@
-import type { Action, Category, Role, Status } from './types/index.ts';
+import type { Action, Category, DuplicateMatch, Role, Status } from './types/index.ts';
 
 export const ROLE_LABEL: Record<Role, string> = {
 	employee: 'Karyawan',
@@ -61,6 +61,14 @@ export const ACTION_LABEL: Record<Action, string> = {
 };
 
 export const ALL_STATUSES = Object.keys(STATUS_LABEL) as Status[];
+
+/** Di bawah skor ini, field hasil OCR ditandai agar diperiksa ulang. */
+export const OCR_LOW_CONFIDENCE = 0.9;
+
+export const DUPLICATE_REASON_LABEL: Record<DuplicateMatch['reason'], string> = {
+	same_file: 'File struk sama',
+	same_data: 'Tanggal & nominal sama'
+};
 
 const rupiah = new Intl.NumberFormat('id-ID', {
 	style: 'currency',

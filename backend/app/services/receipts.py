@@ -1,3 +1,4 @@
+import hashlib
 import os
 import uuid
 
@@ -48,7 +49,8 @@ def store_receipt(file_storage, user):
         f.write(content)
 
     receipt = Receipt(original_filename=filename[:255], storage_key=storage_key, file_type=mime,
-                      file_size=len(content), uploaded_by=user.id)
+                      file_size=len(content), sha256=hashlib.sha256(content).hexdigest(),
+                      uploaded_by=user.id)
     db.session.add(receipt)
     db.session.flush()
     return receipt

@@ -41,38 +41,72 @@ _WORD = re.compile(r"[^\W\d_]{3,}")  # kata minimal 3 huruf
 
 
 def parse_receipt(lines, rules=None):
+    return parse_receipt_with_sources(lines, rules)[0]
+
+
+def parse_receipt_with_sources(lines, rules=None):
+    """Seperti parse_receipt, plus indeks baris (pada `lines` asli) tempat tiap nilai dibaca.
+
+    Mengembalikan (fields, sources); sources hanya berisi field yang ditemukan.
+    """
     rules = {**DEFAULT_RULES, **(rules or {})}
-    lines = [ln.strip() for ln in lines if ln and ln.strip()]
-    return {
+    kept = [(i, ln.strip()) for i, ln in enumerate(lines) if ln and ln.strip()]
+    original = [i for i, _ in kept]
+    lines = [ln for _, ln in kept]
+    found = {
         "merchant": find_merchant(lines, rules),
         "transaction_date": find_date(lines),
         "total_amount": find_total(lines, rules),
     }
+    fields = {k: value for k, (value, _) in found.items()}
+    sources = {k: [original[i] for i in idxs] for k, (value, idxs) in found.items() if value is not None}
+    return fields, sources
+
+
+def field_confidence(sources, scores):
+    """Skor per field = skor terbaik dari baris asalnya (nilai bisa terbaca di beberapa baris)."""
+    result = {}
+    for field, idxs in sources.items():
+        known = [scores[i] for i in idxs if i < len(scores) and scores[i] is not None]
+        result[field] = round(max(known), 3) if known else None
+    return result
+
+
+def _single(hits):
+    """{nilai: indeks baris}: satu nilai -> (nilai, baris); kosong atau ambigu -> (None, [])."""
+    if len(hits) != 1:
+        return None, []
+    (value, idxs), = hits.items()
+    return value, sorted(idxs)
 
 
 def find_merchant(lines, rules):
     # 1) Nama layanan aplikasi. Lebih dari satu layanan berbeda = ambigu.
-    text = "\n".join(lines)
-    brands = [b for b in rules["merchant_brands"]
-              if re.search(rf"(?<![^\W\d_]){re.escape(b)}(?![^\W\d_])", text, re.IGNORECASE)]
-    if brands:
-        return brands[0] if len(brands) == 1 else None
+    hits = {}
+    for b in rules["merchant_brands"]:
+        pattern = re.compile(rf"(?<![^\W\d_]){re.escape(b)}(?![^\W\d_])", re.IGNORECASE)
+        idxs = {i for i, line in enumerate(lines) if pattern.search(line)}
+        if idxs:
+            hits[b] = idxs
+    if hits:
+        return _single(hits)
 
     # 2) Nilai berlabel, mis. "Ke Nasi Goreng Suroboyo" atau "Merchant: Kopi Senja".
     for label in rules["merchant_labels"]:
         pattern = re.compile(rf"{re.escape(label)}(?:\s*:\s*|\s+)(.+)", re.IGNORECASE)
-        values = {m.group(1).strip() for m in map(pattern.match, lines) if m}
-        values = {v for v in values if _looks_like_merchant(v, rules)}
-        if len(values) == 1:
-            return values.pop()[:200]
-        if len(values) > 1:
-            return None  # ambigu
+        hits = {}
+        for i, line in enumerate(lines):
+            m = pattern.match(line)
+            if m and _looks_like_merchant(value := m.group(1).strip(), rules):
+                hits.setdefault(value[:200], set()).add(i)
+        if hits:
+            return _single(hits)  # lebih dari satu nilai = ambigu
 
     # 3) Struk kertas: nama toko biasanya di baris paling atas.
-    for line in lines[: rules["merchant_scan_lines"]]:
+    for i, line in enumerate(lines[: rules["merchant_scan_lines"]]):
         if _looks_like_merchant(line, rules):
-            return line[:200]
-    return None
+            return line[:200], [i]
+    return None, []
 
 
 def _looks_like_merchant(line, rules):
@@ -119,10 +153,13 @@ def _find_dates_in(line):
 
 
 def find_date(lines):
-    dates = {dt for line in lines for dt in _find_dates_in(line)
-             if 2000 <= dt.year <= date.today().year + 1}
+    hits = {}
+    for i, line in enumerate(lines):
+        for dt in _find_dates_in(line):
+            if 2000 <= dt.year <= date.today().year + 1:
+                hits.setdefault(dt, set()).add(i)
     # Lebih dari satu tanggal berbeda = ambigu -> kosongkan.
-    return dates.pop() if len(dates) == 1 else None
+    return _single(hits)
 
 
 def parse_amount(token):
@@ -150,18 +187,18 @@ def _amounts_in(line):
 
 def find_total(lines, rules):
     for keyword in rules["total_keywords"]:
-        candidates = set()
+        candidates = {}  # nominal -> baris tempat nominal terbaca
         for i, line in enumerate(lines):
             low = line.lower()
             if keyword not in low or any(x in low for x in rules["total_exclude"]):
                 continue
+            src = i
             amounts = _amounts_in(line)
             if not amounts and i + 1 < len(lines):  # nominal di baris berikutnya
-                amounts = _amounts_in(lines[i + 1])
+                src = i + 1
+                amounts = _amounts_in(lines[src])
             if amounts:
-                candidates.add(amounts[-1])
-        if len(candidates) == 1:
-            return candidates.pop()
-        if len(candidates) > 1:
-            return None  # ambigu
-    return None
+                candidates.setdefault(amounts[-1], set()).add(src)
+        if candidates:
+            return _single(candidates)  # lebih dari satu nominal = ambigu
+    return None, []

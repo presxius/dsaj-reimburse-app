@@ -27,7 +27,7 @@ def create_app(config_object="config.Config"):
     @app.errorhandler(ApiError)
     def handle_api_error(e):
         db.session.rollback()
-        return jsonify({"error": e.message}), e.status
+        return jsonify({"error": e.message}), e.status, e.headers
 
     @app.errorhandler(HTTPException)
     def handle_http_error(e):

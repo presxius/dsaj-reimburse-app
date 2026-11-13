@@ -154,6 +154,8 @@ class Receipt(db.Model):
     storage_key = db.Column(db.String(255), unique=True, nullable=False)
     file_type = db.Column(db.String(50), nullable=False)
     file_size = db.Column(db.Integer, nullable=False)
+    # SHA-256 isi file, untuk mendeteksi struk yang sama diunggah lebih dari sekali.
+    sha256 = db.Column(db.String(64), index=True)
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     uploaded_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
@@ -179,6 +181,8 @@ class OcrResult(db.Model):
     transaction_date = db.Column(db.Date)
     total_amount = db.Column(db.Numeric(14, 2))
     raw_text = db.Column(db.Text)
+    # Skor keyakinan OCR (0-1) per field: {"merchant": 0.97, "transaction_date": ..., "total_amount": ...}.
+    confidence = db.Column(db.JSON)
     status = db.Column(db.String(20), nullable=False, default="queued")  # queued|processing|completed|failed
     error = db.Column(db.String(255))
     processed_at = db.Column(db.DateTime)
@@ -192,6 +196,7 @@ class OcrResult(db.Model):
             "transaction_date": self.transaction_date.isoformat() if self.transaction_date else None,
             "total_amount": float(self.total_amount) if self.total_amount is not None else None,
             "raw_text": self.raw_text,
+            "confidence": self.confidence,
             "error": self.error,
             "processed_at": self.processed_at.isoformat() if self.processed_at else None,
         }

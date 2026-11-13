@@ -34,11 +34,37 @@ Perintah berguna:
 ```bash
 docker compose logs -f backend
 docker compose exec backend flask --app wsgi seed                           # akun contoh
-docker compose exec db pg_dump -U reimburse reimburse > backup.sql          # backup database
-docker compose exec -T db psql -U reimburse reimburse < backup.sql          # restore
 ```
 
-Volume `receipts` berisi file struk asli; ikut sertakan dalam backup bersama database.
+## Backup & restore
+
+[deployment/backup.sh](deployment/backup.sh) membackup database (`pg_dump` format custom, diverifikasi
+dengan `pg_restore --list`) dan volume `receipts` (file struk asli), lalu menghapus backup yang lebih
+tua dari `KEEP_DAYS` hari (default 14). Tujuan default `/var/backups/reimburse`, bisa diganti lewat `BACKUP_DIR`.
+
+```bash
+sudo ./deployment/backup.sh                              # jalankan manual
+sudo BACKUP_DIR=/mnt/nas/reimburse KEEP_DAYS=30 ./deployment/backup.sh
+```
+
+Jadwalkan harian lewat crontab root (`sudo crontab -e`), mis. setiap pukul 01.30:
+
+```cron
+30 1 * * * /opt/apps/dsaj-reimburse-app/deployment/backup.sh >> /var/log/reimburse-backup.log 2>&1
+```
+
+Backup di disk VM yang sama tidak menolong bila VM/disknya rusak. Salin juga secara berkala ke
+mesin lain atau NAS (mis. `BACKUP_DIR` di mount NAS, atau `rsync` terjadwal).
+
+Restore (menimpa data saat ini; ganti `<waktu>` dengan nama file backup):
+
+```bash
+docker compose exec -T db sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner' \
+  < /var/backups/reimburse/db-<waktu>.dump
+docker compose exec -T backend tar -C /app/storage -xzf - < /var/backups/reimburse/receipts-<waktu>.tar.gz
+```
+
+Uji restore sesekali di server/VM lain agar yakin backup benar-benar bisa dipakai.
 
 ## Database & migrasi
 
@@ -99,6 +125,16 @@ npm run dev                          # http://localhost:5173 (proxy /api -> Flas
 
 **Tes backend:** `cd backend; .\.venv\Scripts\python -m pytest`
 
+Di server tanpa Python lokal, jalankan tes di image backend dengan kode terbaru di-mount
+(folder `tests/` tidak ikut ke image; tes memakai SQLite in-memory, database produksi tidak disentuh):
+
+```bash
+sudo docker compose run --rm --no-deps -v "$PWD/backend:/app" --entrypoint python backend -m pytest -q -p no:cacheprovider
+```
+
+**CI:** [.github/workflows/ci.yml](.github/workflows/ci.yml) menjalankan tes backend (SQLite dan PostgreSQL 18),
+`svelte-check`, dan build frontend + image Docker pada setiap push dan pull request.
+
 ### Akun contoh (password: `password123`)
 
 | Email | Role |
@@ -127,6 +163,22 @@ worker gunicorn memuat model sendiri. Aturan parser (kata kunci total, pengecual
 `backend/app/ocr/parser.py` (`DEFAULT_RULES`). Parser mengembalikan kosong bila field tidak
 ditemukan **atau ambigu** — tidak pernah menebak.
 
+Setiap field hasil OCR membawa **skor keyakinan** (0–1, kolom `ocr_results.confidence`), diambil dari
+skor PaddleOCR pada baris tempat nilai itu terbaca. Field dengan skor di bawah 90%
+(`OCR_LOW_CONFIDENCE` di `frontend/src/lib/labels.ts`) ditandai kuning di form dan halaman detail.
+
+## Deteksi struk duplikat
+
+Pengajuan ditandai "kemungkinan ganda" (peringatan saja, tidak memblokir) bila ada pengajuan lain
+yang bukan draft dengan:
+
+- **file struk identik** (hash SHA-256 isi file, kolom `receipts.sha256`), atau
+- **kategori, tanggal, dan nominal sama**, dari karyawan yang sama atau dengan merchant yang sama.
+
+Karyawan diperingatkan saat mengunggah struk yang sudah pernah ia ajukan; admin/atasan/finance melihat
+banner di halaman detail. Daftar duplikat hanya berisi pengajuan yang boleh dilihat pengguna tersebut.
+Logika: `backend/app/services/duplicates.py`.
+
 ## Alur status
 
 ```
@@ -153,6 +205,9 @@ Disepakati untuk versi ini dan mudah diubah:
 
 - Ganti `SECRET_KEY` dan set `SESSION_COOKIE_SECURE=1` (HTTPS).
   Jangan aktifkan `SEED_DEMO` (akun contoh memakai password yang diketahui umum).
+- Login dikunci sementara per email setelah 5 kali gagal dalam 15 menit (`MAX_FAILED_LOGINS`,
+  `LOCKOUT_WINDOW` di `backend/app/routes/auth.py`), dicatat sebagai `auth.login_failed` di log aktivitas.
+  Percobaan saat terkunci tidak memperpanjang kunci.
 - HTTPS: pasang di depan service `nginx` (mis. reverse proxy/load balancer perusahaan) atau
   tambahkan blok `listen 443 ssl` di [default.conf](deployment/nginx/default.conf).
 - Tanpa Docker: jalankan `flask db upgrade`, lalu gunicorn (`gunicorn -b 127.0.0.1:5000 --timeout 120 wsgi:app`)

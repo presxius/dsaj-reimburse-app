@@ -6,12 +6,22 @@
 	import Check from 'phosphor-svelte/lib/CheckIcon';
 	import PencilSimple from 'phosphor-svelte/lib/PencilSimpleIcon';
 	import Receipt from 'phosphor-svelte/lib/ReceiptIcon';
+	import WarningCircle from 'phosphor-svelte/lib/WarningCircleIcon';
 	import CategoryIcon from '#lib/components/CategoryIcon.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import StatusTracker from '#lib/components/StatusTracker.svelte';
 	import AmountInput from '#lib/components/AmountInput.svelte';
 	import Spinner from '#lib/components/Spinner.svelte';
-	import { ACTION_LABEL, CATEGORY_LABEL, ROLE_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
+	import {
+		ACTION_LABEL,
+		CATEGORY_LABEL,
+		DUPLICATE_REASON_LABEL,
+		OCR_LOW_CONFIDENCE,
+		ROLE_LABEL,
+		STATUS_LABEL,
+		formatDate,
+		formatRupiah
+	} from '#lib/labels.ts';
 	import { api } from '#lib/services/api.ts';
 	import { auth, notify, notifyError } from '#lib/session.svelte.ts';
 	import type { Action, ReimbursementDetail } from '#lib/types/index.ts';
@@ -66,17 +76,26 @@
 	const timeline = $derived(item ? [...item.history].reverse() : []);
 	const compare = $derived.by(() => {
 		if (!item || ocr?.status !== 'completed') return [];
+		const conf = ocr.confidence ?? {};
 		return [
-			{ label: 'Merchant', ocr: ocr.merchant, final: item.merchant, same: (ocr.merchant || null) === (item.merchant || null) },
+			{
+				label: 'Merchant',
+				ocr: ocr.merchant,
+				conf: conf.merchant ?? null,
+				final: item.merchant,
+				same: (ocr.merchant || null) === (item.merchant || null)
+			},
 			{
 				label: 'Tanggal',
 				ocr: ocr.transaction_date ? formatDate(ocr.transaction_date) : null,
+				conf: conf.transaction_date ?? null,
 				final: formatDate(item.transaction_date),
 				same: ocr.transaction_date === item.transaction_date
 			},
 			{
 				label: 'Total',
 				ocr: ocr.total_amount != null ? formatRupiah(ocr.total_amount) : null,
+				conf: conf.total_amount ?? null,
 				final: formatRupiah(item.amount),
 				same: ocr.total_amount != null && Number(ocr.total_amount) === Number(item.amount)
 			}
@@ -202,6 +221,26 @@
 		</div>
 	</header>
 
+	{#if item.duplicates?.length}
+		<section class="reveal mb-5 flex items-start gap-3 rounded-2xl border border-warn/35 bg-warn/[0.07] p-4 text-[13.5px] text-ink sm:p-5"
+			style="--d: 140ms" role="alert">
+			<WarningCircle size={20} weight="fill" class="mt-px shrink-0 text-warn" />
+			<div class="min-w-0">
+				<p class="font-semibold">Kemungkinan pengajuan ganda</p>
+				<p class="mt-0.5 text-muted">Pengajuan berikut memiliki struk atau data transaksi yang sama. Periksa sebelum memproses.</p>
+				<ul class="mt-2 space-y-1">
+					{#each item.duplicates as d (d.id)}
+						<li class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+							<a href="/reimburse/{d.id}" class="code font-medium text-ink underline underline-offset-2">{d.code}</a>
+							<span class="rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-semibold text-warn">{DUPLICATE_REASON_LABEL[d.reason]}</span>
+							<span class="text-muted">{d.employee} · {formatDate(d.transaction_date)} · <span class="num">{formatRupiah(d.amount)}</span> · {STATUS_LABEL[d.status]}</span>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		</section>
+	{/if}
+
 	<section class="panel reveal mb-5 px-3 py-6 sm:px-8 sm:py-7" style="--d: 160ms">
 		<StatusTracker status={item.status} history={item.history} />
 	</section>
@@ -261,7 +300,13 @@
 									{#each compare as c, i (c.label)}
 										<tr class="row-in" style="--d: {280 + i * 60}ms">
 											<td class="pl-0! text-muted">{c.label}</td>
-											<td class="{c.ocr ? 'text-ink-2' : 'text-faint italic'} {c.label === 'Total' ? 'num' : ''}">{c.ocr ?? 'tidak terbaca'}</td>
+											<td class="{c.ocr ? 'text-ink-2' : 'text-faint italic'} {c.label === 'Total' ? 'num' : ''}">
+												{c.ocr ?? 'tidak terbaca'}
+												{#if c.ocr && c.conf != null}
+													<span class="num ml-1 text-[11px] {c.conf < OCR_LOW_CONFIDENCE ? 'font-semibold text-warn' : 'text-faint'}"
+														title="Skor keyakinan OCR">{Math.round(c.conf * 100)}%</span>
+												{/if}
+											</td>
 											<td class="font-medium text-ink {c.label === 'Total' ? 'num' : ''}">{c.final ?? '-'}</td>
 											<td class="text-right">
 												{#if c.same}

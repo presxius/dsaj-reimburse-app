@@ -3,10 +3,11 @@ from decimal import Decimal, InvalidOperation
 
 
 class ApiError(Exception):
-    def __init__(self, message, status=400):
+    def __init__(self, message, status=400, headers=None):
         super().__init__(message)
         self.message = message
         self.status = status
+        self.headers = headers or {}
 
 
 def parse_date(value, field):

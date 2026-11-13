@@ -52,9 +52,13 @@ export interface OcrResult {
 	transaction_date: string | null;
 	total_amount: number | null;
 	raw_text: string | null;
+	/** Skor keyakinan 0-1 per field yang terbaca; null bila engine tidak memberi skor. */
+	confidence: Partial<Record<OcrField, number | null>> | null;
 	error: string | null;
 	processed_at: string | null;
 }
+
+export type OcrField = 'merchant' | 'transaction_date' | 'total_amount';
 
 export interface Receipt {
 	id: number;
@@ -63,6 +67,21 @@ export interface Receipt {
 	file_size: number;
 	uploaded_at: string;
 	ocr: OcrResult | null;
+}
+
+/** Pengajuan lain yang kemungkinan memakai struk/transaksi yang sama. */
+export interface DuplicateMatch {
+	id: number;
+	code: string;
+	status: Status;
+	employee: string;
+	transaction_date: string;
+	amount: number;
+	reason: 'same_file' | 'same_data';
+}
+
+export interface UploadedReceipt extends Receipt {
+	duplicates: DuplicateMatch[];
 }
 
 export interface HistoryEntry {
@@ -105,6 +124,7 @@ export interface ReimbursementDetail extends Reimbursement {
 	history: HistoryEntry[];
 	payment: Payment | null;
 	actions?: Action[];
+	duplicates?: DuplicateMatch[];
 }
 
 export interface Bucket {

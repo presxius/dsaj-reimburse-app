@@ -3,12 +3,21 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file
 from ..extensions import db
 from ..models import OcrResult, Receipt, Role, utcnow
 from ..ocr import OcrUnavailable, run_ocr
+from ..services import duplicates
 from ..services.access import can_view
 from ..services.receipts import receipt_path, store_receipt
 from ..utils.auth import log_activity, login_required, roles_required
 from ..utils.errors import ApiError
 
 bp = Blueprint("receipts", __name__, url_prefix="/api")
+
+
+def _upload_response(receipt):
+    """Data struk + pengajuan karyawan ini yang sudah memakai file yang sama."""
+    data = receipt.to_dict()
+    data["duplicates"] = [duplicates.to_dict(r, "same_file") for r in duplicates.same_file(receipt.sha256)
+                          if can_view(g.user, r)]
+    return jsonify(data), 201
 
 
 @bp.post("/receipts")
@@ -18,7 +27,7 @@ def upload_receipt():
     receipt = store_receipt(request.files.get("file"), g.user)
     log_activity("receipt.upload", "receipt", receipt.id)
     db.session.commit()
-    return jsonify(receipt.to_dict()), 201
+    return _upload_response(receipt)
 
 
 @bp.post("/ocr/scan")
@@ -36,6 +45,7 @@ def ocr_scan():
         ocr.merchant = fields["merchant"]
         ocr.transaction_date = fields["transaction_date"]
         ocr.total_amount = fields["total_amount"]
+        ocr.confidence = fields.get("confidence")
         ocr.status = "completed"
         if not lines:
             ocr.error = "Tidak ada teks yang terbaca pada gambar."
@@ -47,7 +57,7 @@ def ocr_scan():
     ocr.processed_at = utcnow()
     log_activity("ocr.scan", "receipt", receipt.id, ocr.status)
     db.session.commit()
-    return jsonify(receipt.to_dict()), 201
+    return _upload_response(receipt)
 
 
 @bp.get("/receipts/<int:receipt_id>/file")

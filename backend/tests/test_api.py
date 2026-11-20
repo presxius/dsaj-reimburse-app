@@ -7,7 +7,7 @@ from app.models import ActivityLog
 from app.routes.auth import LOCKOUT_WINDOW, MAX_FAILED_LOGINS
 from app.seed import DEMO_PASSWORD
 
-from .conftest import PNG, new_submission, upload
+from .conftest import PNG, item, new_submission, upload
 
 PNG_OTHER = PNG + b"\x01"  # isi berbeda -> hash berbeda
 
@@ -129,16 +129,13 @@ def test_report_rejects_bad_date_filter(login):
 
 # --- Deteksi duplikat ----------------------------------------------------------------------
 
-def _submit(client, content, **extra):
-    receipt = upload(client, content=content).json
-    body = {"category": "transport", "transaction_date": "2026-01-10", "amount": 50000,
-            "description": "Taksi", "merchant": "Blue Taxi", "receipt_id": receipt["id"],
-            "submit": True, **extra}
-    return client.post("/api/reimbursements", json=body).json
+def _submit(client, content, submit=True, **fields):
+    return new_submission(client, submit=submit, items=[item(client, content=content, **fields)]).json
 
 
 def _dupes(client, rid):
-    return {(d["code"], d["reason"]) for d in client.get(f"/api/reimbursements/{rid}").json["duplicates"]}
+    found = client.get(f"/api/reimbursements/{rid}").json["duplicates"]
+    return {(d["code"], d["reason"]) for matches in found.values() for d in matches}
 
 
 def test_same_receipt_file_is_flagged(login):

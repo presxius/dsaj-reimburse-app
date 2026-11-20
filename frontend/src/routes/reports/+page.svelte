@@ -8,7 +8,7 @@
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import PageHeader from '#lib/components/PageHeader.svelte';
 	import Segmented from '#lib/components/Segmented.svelte';
-	import { ALL_STATUSES, CATEGORY_LABEL, STATUS_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
+	import { ALL_STATUSES, CATEGORY_LABEL, STATUS_LABEL, formatDate, formatDateRange, formatRupiah, itemSummary } from '#lib/labels.ts';
 	import { api, query } from '#lib/services/api.ts';
 	import { auth, notifyError } from '#lib/session.svelte.ts';
 	import type { Category, ReportRow, Summary } from '#lib/types/index.ts';
@@ -119,7 +119,7 @@
 				<table class="table text-[13.5px]">
 					<thead>
 						<tr>
-							<th>Kode</th><th>Karyawan</th><th>Kategori</th><th>Tgl transaksi</th><th>Merchant</th>
+							<th>Kode</th><th>Karyawan</th><th>Kategori</th><th>Tgl transaksi</th><th>Keperluan</th><th>Item</th>
 							<th class="text-right">Nominal</th><th>Status</th><th>Dibayar</th><th>Referensi</th>
 						</tr>
 					</thead>
@@ -129,8 +129,9 @@
 								<td><a class="code font-medium text-ink underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-ink" href="/reimburse/{r.id}">{r.code}</a></td>
 								<td class="whitespace-nowrap text-ink">{r.employee.name}</td>
 								<td class="text-ink-2">{CATEGORY_LABEL[r.category]}</td>
-								<td class="num whitespace-nowrap text-ink-2">{formatDate(r.transaction_date)}</td>
-								<td class="max-w-[14rem] truncate text-ink-2">{r.merchant ?? '-'}</td>
+								<td class="num whitespace-nowrap text-ink-2">{formatDateRange(r.date_from, r.date_to)}</td>
+								<td class="max-w-[14rem] truncate text-ink-2" title={r.purpose}>{r.purpose}</td>
+								<td class="max-w-[12rem] truncate text-ink-2" title={r.merchants.join(', ')}>{itemSummary(r)}</td>
 								<td class="num text-right font-semibold whitespace-nowrap text-ink">{formatRupiah(r.amount)}</td>
 								<td><StatusBadge status={r.status} /></td>
 								<td class="num whitespace-nowrap text-ink-2">{formatDate(r.payment_date)}</td>

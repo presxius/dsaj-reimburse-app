@@ -1,38 +1,38 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-	import { slide } from 'svelte/transition';
-	import UploadSimple from 'phosphor-svelte/lib/UploadSimpleIcon';
-	import ArrowsClockwise from 'phosphor-svelte/lib/ArrowsClockwiseIcon';
+	import { tick, untrack } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { fly, slide } from 'svelte/transition';
 	import ArrowRight from 'phosphor-svelte/lib/ArrowRightIcon';
-	import CaretRight from 'phosphor-svelte/lib/CaretRightIcon';
-	import Check from 'phosphor-svelte/lib/CheckIcon';
-	import WarningCircle from 'phosphor-svelte/lib/WarningCircleIcon';
 	import Car from 'phosphor-svelte/lib/CarIcon';
-	import FilePdf from 'phosphor-svelte/lib/FilePdfIcon';
 	import ForkKnife from 'phosphor-svelte/lib/ForkKnifeIcon';
+	import Plus from 'phosphor-svelte/lib/PlusIcon';
+	import UploadSimple from 'phosphor-svelte/lib/UploadSimpleIcon';
+	import CountUp from './CountUp.svelte';
+	import ItemEditor from './ItemEditor.svelte';
 	import Segmented from './Segmented.svelte';
-	import AmountInput from './AmountInput.svelte';
 	import Spinner from './Spinner.svelte';
-	import { api } from '#lib/services/api.ts';
-	import { OCR_LOW_CONFIDENCE, STATUS_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
+	import {
+		ACCEPTED_TYPES,
+		MAX_FILES_PER_ITEM,
+		MAX_FILE_SIZE,
+		MAX_ITEMS,
+		emptyItem,
+		fromSaved,
+		newKey,
+		submitProblem
+	} from '#lib/draft.ts';
+	import type { DraftFile, DraftItem } from '#lib/draft.ts';
+	import { formatRupiah } from '#lib/labels.ts';
 	import { ease, ms } from '#lib/motion.ts';
+	import { api } from '#lib/services/api.ts';
 	import { notify, notifyError } from '#lib/session.svelte.ts';
-	import type {
-		Category,
-		DuplicateMatch,
-		OcrField,
-		Receipt,
-		ReimbursementDetail,
-		UploadedReceipt
-	} from '#lib/types/index.ts';
+	import type { Category, ReimbursementDetail, UploadedReceipt } from '#lib/types/index.ts';
 
 	let {
 		initial,
 		onsaved
 	}: { initial?: ReimbursementDetail; onsaved: (r: ReimbursementDetail) => void } = $props();
 
-	const MAX_SIZE = 5 * 1024 * 1024;
-	const today = new Date().toLocaleDateString('en-CA');
 	const CATEGORIES: { value: Category; label: string; icon: typeof Car }[] = [
 		{ value: 'transport', label: 'Transportasi', icon: Car },
 		{ value: 'consumption', label: 'Konsumsi', icon: ForkKnife }
@@ -41,115 +41,171 @@
 	// Nilai awal hanya dipakai sekali saat form dibuat.
 	const init = untrack(() => initial);
 	let category = $state<Category>(init?.category ?? 'transport');
-	let merchant = $state(init?.merchant ?? '');
-	let transactionDate = $state(init?.transaction_date ?? '');
-	let amount = $state<number | null>(init?.amount ?? null);
-	let description = $state(init?.description ?? '');
-	let receipt = $state<Receipt | null>(init?.receipt ?? null);
-	let previewUrl = $state<string | null>(init?.receipt ? `/api/receipts/${init.receipt.id}/file` : null);
-	let previewName = $state(init?.receipt?.original_filename ?? '');
-	let previewIsPdf = $state(init?.receipt?.file_type === 'application/pdf');
-	let pdfThumbFailed = $state(false);
+	let purpose = $state(init?.purpose ?? '');
+	let items = $state<DraftItem[]>(init?.items.map(fromSaved) ?? []);
 	let useOcr = $state(true);
-	let uploading = $state(false);
 	let saving = $state<'draft' | 'submit' | null>(null);
-	let ocrConfirmed = $state(false);
-	let fromOcr = $state<Record<string, boolean>>({});
-	let duplicates = $state<DuplicateMatch[]>([]);
 	let dragging = $state(false);
-	let fileInput: HTMLInputElement;
+	let triedSubmit = $state(false);
+	let purposeShake = $state(false);
+	let dropInput = $state<HTMLInputElement>();
 
-	const ocr = $derived(receipt?.ocr ?? null);
-	const confidence = (f: OcrField) => ocr?.confidence?.[f] ?? null;
-	const isLow = (f: OcrField) => {
-		const c = confidence(f);
-		return c != null && c < OCR_LOW_CONFIDENCE;
-	};
-	const ocrRows = $derived.by((): { k: string; f: OcrField; v: string | null }[] => {
-		if (!ocr) return [];
-		return [
-			{ k: 'Merchant', f: 'merchant', v: ocr.merchant },
-			{ k: 'Tanggal', f: 'transaction_date', v: ocr.transaction_date ? formatDate(ocr.transaction_date) : null },
-			{ k: 'Total', f: 'total_amount', v: ocr.total_amount != null ? formatRupiah(ocr.total_amount) : null }
-		];
-	});
-	const anyLow = $derived(ocrRows.some((r) => r.v && isLow(r.f)));
-	const needsConfirm = $derived(ocr?.status === 'completed');
-	const busy = $derived(!!saving || uploading);
+	const total = $derived(items.reduce((sum, i) => sum + (i.amount ?? 0), 0));
+	const pending = $derived(items.reduce((n, i) => n + i.files.filter((f) => f.status !== 'done').length, 0));
+	const problems = $derived(Object.fromEntries(items.map((i) => [i.key, submitProblem(i)])));
+	const busy = $derived(!!saving);
 
-	function onDrop(e: DragEvent) {
-		e.preventDefault();
-		dragging = false;
-		const file = e.dataTransfer?.files[0];
-		if (file && !uploading) handleFile(file);
+	// --- Antrean unggah: satu file per waktu, karena OCR di server berat (RAM & CPU). ---
+
+	type Job = { itemKey: string; fileKey: string; file: File; ocr: boolean; fresh: boolean };
+	const queue: Job[] = [];
+	let pumping = false;
+	let readCount = 0;
+
+	function validFile(file: File) {
+		if (!ACCEPTED_TYPES.includes(file.type)) {
+			notify(`${file.name}: format harus JPG, PNG, atau PDF.`, 'error');
+			return false;
+		}
+		if (file.size > MAX_FILE_SIZE) {
+			notify(`${file.name}: ukuran maksimal 5 MB.`, 'error');
+			return false;
+		}
+		return true;
 	}
 
-	async function handleFile(file: File) {
-		if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type)) {
-			notify('Format file harus JPG, JPEG, PNG, atau PDF.', 'error');
-			fileInput.value = '';
-			return;
+	function draftFile(file: File): DraftFile {
+		const isPdf = file.type === 'application/pdf';
+		return { key: newKey(), receipt: null, name: file.name, isPdf, localUrl: URL.createObjectURL(file), status: 'queued' };
+	}
+
+	/** Tiap file menjadi satu item baru (satu struk = satu transaksi). */
+	function addAsItems(list: FileList | File[] | null | undefined) {
+		const files = [...(list ?? [])].filter(validFile);
+		const room = MAX_ITEMS - items.length;
+		if (files.length > room) notify(`Maksimal ${MAX_ITEMS} item per pengajuan; ${files.length - Math.max(room, 0)} file dilewati.`, 'error');
+		for (const file of files.slice(0, Math.max(room, 0))) {
+			const item = emptyItem();
+			const f = draftFile(file);
+			item.files.push(f);
+			items.push(item);
+			queue.push({ itemKey: item.key, fileKey: f.key, file, ocr: useOcr, fresh: true });
 		}
-		if (file.size > MAX_SIZE) {
-			notify('Ukuran file maksimal 5 MB.', 'error');
-			fileInput.value = '';
-			return;
+		if (dropInput) dropInput.value = '';
+		pump();
+	}
+
+	/** File tambahan untuk item yang sama (halaman lanjutan, bukti bayar): tanpa OCR. */
+	function addToItem(item: DraftItem, list: File[]) {
+		const files = list.filter(validFile);
+		const room = MAX_FILES_PER_ITEM - item.files.length;
+		if (files.length > room) notify(`Maksimal ${MAX_FILES_PER_ITEM} file per item.`, 'error');
+		for (const file of files.slice(0, Math.max(room, 0))) {
+			const f = draftFile(file);
+			const fresh = item.files.length === 0 && !item.merchant && !item.transaction_date && item.amount == null;
+			item.files.push(f);
+			queue.push({ itemKey: item.key, fileKey: f.key, file, ocr: useOcr && fresh, fresh });
 		}
-		previewUrl = URL.createObjectURL(file);
-		previewName = file.name;
-		previewIsPdf = file.type === 'application/pdf';
-		pdfThumbFailed = false;
-		uploading = true;
-		ocrConfirmed = false;
-		fromOcr = {};
-		duplicates = [];
+		pump();
+	}
+
+	async function pump() {
+		if (pumping) return;
+		pumping = true;
+		try {
+			while (queue.length) await upload(queue.shift()!);
+		} finally {
+			pumping = false;
+		}
+		if (readCount) {
+			notify(readCount === 1 ? 'Struk terbaca. Periksa hasil OCR sebelum mengirim.' : `${readCount} struk terbaca. Periksa hasil OCR tiap item.`);
+			readCount = 0;
+		}
+	}
+
+	async function upload(job: Job) {
+		const item = items.find((i) => i.key === job.itemKey);
+		const f = item?.files.find((x) => x.key === job.fileKey);
+		if (!item || !f) return; // item/file sudah dihapus sebelum giliran diunggah
+		f.status = 'uploading';
 		try {
 			const fd = new FormData();
-			fd.append('file', file);
-			const uploaded = await api.post<UploadedReceipt>(useOcr ? '/ocr/scan' : '/receipts', fd);
-			receipt = uploaded;
+			fd.append('file', job.file);
+			const uploaded = await api.post<UploadedReceipt>(job.ocr ? '/ocr/scan' : '/receipts', fd);
+			f.receipt = uploaded;
+			f.status = 'done';
 			// Saat merevisi, pengajuan ini sendiri bukan duplikat.
-			duplicates = (uploaded.duplicates ?? []).filter((d) => d.id !== init?.id);
+			item.duplicates.push(...(uploaded.duplicates ?? []).filter((d) => d.id !== init?.id));
 			const r = uploaded.ocr;
-			if (r?.status === 'completed') {
+			if (r?.status === 'completed' && job.fresh) {
 				// Isi hanya field yang berhasil dibaca; sisanya biarkan untuk diisi manual.
-				if (r.merchant) merchant = r.merchant;
-				if (r.transaction_date) transactionDate = r.transaction_date;
-				if (r.total_amount != null) amount = r.total_amount;
-				fromOcr = {
-					merchant: !!r.merchant,
-					date: !!r.transaction_date,
-					amount: r.total_amount != null
-				};
-				notify('Struk terbaca. Periksa kembali hasil OCR sebelum mengirim.');
-			} else if (r?.status === 'failed') {
-				notify('OCR gagal. Silakan isi formulir secara manual.', 'error');
+				if (r.merchant) item.merchant = r.merchant;
+				if (r.transaction_date) item.transaction_date = r.transaction_date;
+				if (r.total_amount != null) item.amount = r.total_amount;
+				item.fromOcr = { merchant: !!r.merchant, date: !!r.transaction_date, amount: r.total_amount != null };
+				item.ocrConfirmed = false;
+				readCount++;
 			}
 		} catch (err) {
-			receipt = null;
-			previewUrl = null;
-			fileInput.value = '';
+			item.files = item.files.filter((x) => x.key !== f.key);
+			// Item yang dibuat khusus untuk file ini dan masih kosong ikut dihapus.
+			if (job.fresh && item.files.length === 0 && !item.merchant && !item.transaction_date && item.amount == null)
+				items = items.filter((i) => i.key !== item.key);
 			notifyError(err);
-		} finally {
-			uploading = false;
 		}
+	}
+
+	function removeItem(key: string) {
+		items = items.filter((i) => i.key !== key);
+	}
+
+	function addManual() {
+		if (items.length >= MAX_ITEMS) return notify(`Maksimal ${MAX_ITEMS} item per pengajuan.`, 'error');
+		const item = emptyItem();
+		items.push(item);
+		tick().then(() => document.getElementById(`m-${item.key}`)?.focus());
+	}
+
+	// --- Simpan ---
+
+	async function focusFirstProblem() {
+		await tick();
+		const key = items.find((i) => problems[i.key])?.key;
+		document.querySelector(`[data-item="${key}"]`)?.scrollIntoView({ behavior: ms(1) ? 'smooth' : 'auto', block: 'center' });
 	}
 
 	async function save(submit: boolean) {
-		if (submit && !receipt) return notify('Bukti transaksi wajib dilampirkan.', 'error');
-		if (submit && needsConfirm && !ocrConfirmed)
-			return notify('Centang konfirmasi pemeriksaan hasil OCR.', 'error');
+		if (!purpose.trim()) {
+			purposeShake = false;
+			requestAnimationFrame(() => (purposeShake = true));
+			document.getElementById('purpose')?.focus();
+			return notify('Keperluan pengajuan wajib diisi.', 'error');
+		}
+		if (pending) return notify('Tunggu sampai semua struk selesai diunggah.', 'error');
+		if (submit) {
+			triedSubmit = true;
+			if (items.length === 0) return notify('Tambahkan minimal satu item pengeluaran.', 'error');
+			const bad = items.findIndex((i) => problems[i.key]);
+			if (bad >= 0) {
+				focusFirstProblem();
+				return notify(`Item ${bad + 1}: ${problems[items[bad].key]}`, 'error');
+			}
+		}
 		saving = submit ? 'submit' : 'draft';
 		try {
 			const body = {
 				category,
-				merchant,
-				transaction_date: transactionDate,
-				amount,
-				description,
-				receipt_id: receipt?.id ?? null,
+				purpose,
 				submit,
-				ocr_confirmed: ocrConfirmed
+				items: items.map((i) => ({
+					id: i.id,
+					merchant: i.merchant,
+					transaction_date: i.transaction_date,
+					amount: i.amount,
+					note: i.note,
+					ocr_confirmed: i.ocrConfirmed,
+					receipt_ids: i.files.flatMap((f) => (f.receipt ? [f.receipt.id] : []))
+				}))
 			};
 			const r = init
 				? await api.put<ReimbursementDetail>(`/reimbursements/${init.id}`, body)
@@ -163,7 +219,7 @@
 		}
 	}
 
-	const dragHandlers = {
+	const dropHandlers = {
 		ondragenter: (e: DragEvent) => {
 			e.preventDefault();
 			dragging = true;
@@ -172,7 +228,11 @@
 		ondragleave: (e: DragEvent & { currentTarget: HTMLElement }) => {
 			if (!e.currentTarget.contains(e.relatedTarget as Node)) dragging = false;
 		},
-		ondrop: onDrop
+		ondrop: (e: DragEvent) => {
+			e.preventDefault();
+			dragging = false;
+			addAsItems(e.dataTransfer?.files);
+		}
 	};
 </script>
 
@@ -183,28 +243,32 @@
 	</h2>
 {/snippet}
 
-{#snippet ocrTag(key: string, field: OcrField)}
-	{#if fromOcr[key]}
-		{#if isLow(field)}
-			<span class="tag-ocr tag-ocr-low"
-				title="OCR kurang yakin ({Math.round((confidence(field) ?? 0) * 100)}%). Cocokkan dengan struk.">OCR · cek</span>
-		{:else}
-			<span class="tag-ocr" title="Diisi dari hasil OCR">OCR</span>
-		{/if}
-	{/if}
-{/snippet}
-
 <form
-	class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.08fr)] lg:items-start"
+	class="space-y-5"
 	onsubmit={(e) => {
 		e.preventDefault();
 		save(true);
 	}}
 >
-	<!-- Kolom kiri: struk -->
-	<section class="panel reveal p-5 sm:p-6 lg:sticky lg:top-24" style="--d: 120ms">
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			{@render step('01', 'Bukti transaksi')}
+	<section class="panel reveal p-5 sm:p-6" style="--d: 120ms">
+		{@render step('01', 'Pengajuan')}
+		<div class="mt-5 grid gap-5 md:grid-cols-[auto_minmax(0,1fr)]">
+			<div>
+				<span class="label">Kategori</span>
+				<Segmented options={CATEGORIES} bind:value={category} label="Kategori" />
+				<p class="mt-2 text-[12px] text-muted">Satu pengajuan untuk satu kategori.</p>
+			</div>
+			<div class={purposeShake ? 'shake' : ''}>
+				<label class="label" for="purpose">Keperluan <span class="text-danger">*</span></label>
+				<textarea id="purpose" rows="2" class="input" bind:value={purpose}
+					placeholder="mis. Kunjungan klien PT ABC di Bekasi, 4–6 Nov"></textarea>
+			</div>
+		</div>
+	</section>
+
+	<section class="reveal space-y-4" style="--d: 180ms">
+		<div class="flex flex-wrap items-center justify-between gap-3 px-1">
+			{@render step('02', 'Item pengeluaran')}
 			<label class="flex cursor-pointer items-center gap-2.5 text-[13px] text-muted select-none">
 				Baca otomatis (OCR)
 				<button type="button" role="switch" aria-checked={useOcr} class="switch" onclick={() => (useOcr = !useOcr)}
@@ -212,227 +276,77 @@
 			</label>
 		</div>
 
-		<input
-			bind:this={fileInput}
-			id="receipt-file"
-			type="file"
-			accept="image/jpeg,image/png,application/pdf"
-			class="peer sr-only"
-			onchange={(e) => {
-				const f = e.currentTarget.files?.[0];
-				if (f) handleFile(f);
-			}}
-			disabled={uploading}
-		/>
-
-		<div class="mt-5 rounded-2xl peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink" {...dragHandlers}>
-			{#if !previewUrl}
-				<label
-					for="receipt-file"
-					class="group relative flex min-h-[20rem] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-[1.5px] border-dashed px-6 text-center transition-[background-color,border-color,transform] duration-300 ease-snap {dragging
-						? 'scale-[1.015] border-ink bg-lime/20'
-						: 'border-line-strong hover:border-faint hover:bg-sunken/60'}"
-				>
-					<span
-						class="grid size-14 place-items-center rounded-2xl bg-chip text-on-chip shadow-pop transition-transform duration-500 ease-spring group-hover:-translate-y-1 group-hover:-rotate-6 {dragging
-							? '-translate-y-2 scale-110 -rotate-6'
-							: ''}"
-					>
-						<UploadSimple size={26} weight="bold" />
-					</span>
-					<span class="display mt-2 text-xl text-ink">
-						{dragging ? 'Lepaskan untuk mengunggah' : 'Tarik foto atau PDF struk ke sini'}
-					</span>
-					<span class="text-sm text-muted">
-						atau <span class="font-medium text-ink underline decoration-line-strong decoration-2 underline-offset-4 transition-colors group-hover:decoration-lime-deep">pilih dari perangkat</span>
-					</span>
-					<span class="eyebrow mt-3">JPG · PNG · PDF · maks 5 MB</span>
-				</label>
-			{:else}
-				<div class="relative overflow-hidden rounded-2xl border border-line bg-sunken {dragging ? 'ring-2 ring-ink' : ''}">
-					{#if previewIsPdf && receipt && !uploading && !pdfThumbFailed}
-						<!-- Thumbnail halaman pertama dibuat server setelah PDF tersimpan. -->
-						<a href={previewUrl} target="_blank" rel="noopener" class="block">
-							<img
-								src="/api/receipts/{receipt.id}/preview"
-								alt="Pratinjau halaman pertama PDF"
-								onerror={() => (pdfThumbFailed = true)}
-								class="max-h-[30rem] w-full bg-white object-contain"
-							/>
-							<span class="absolute bottom-3 left-3 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[12px] font-medium text-on-primary shadow-float">
-								<FilePdf size={14} class="shrink-0" />
-								<span class="truncate">{previewName}</span>
-							</span>
-						</a>
-					{:else if previewIsPdf}
-						<a
-							href={previewUrl}
-							target="_blank"
-							rel="noopener"
-							class="flex min-h-[20rem] flex-col items-center justify-center gap-3 px-6 text-center transition-[filter] duration-700 ease-snap {uploading
-								? 'brightness-[0.82] saturate-50'
-								: ''}"
-						>
-							<FilePdf size={56} class="text-muted" />
-							<span class="code max-w-full truncate text-sm text-ink">{previewName}</span>
-							<span class="text-[13px] text-muted underline underline-offset-4">Buka PDF</span>
-						</a>
-					{:else}
-						<img
-							src={previewUrl}
-							alt="Pratinjau struk"
-							class="max-h-[30rem] w-full object-contain transition-[filter,transform] duration-700 ease-snap {uploading
-								? 'scale-[1.015] brightness-[0.82] saturate-50'
-								: ''}"
-						/>
-					{/if}
-					{#if uploading && useOcr}<div class="scan-beam"></div>{/if}
-					{#if uploading}
-						<div class="absolute inset-x-0 bottom-4 flex justify-center" role="status">
-							<span class="inline-flex items-center gap-2 rounded-full bg-primary px-3.5 py-1.5 text-[13px] font-medium text-on-primary shadow-float">
-								<Spinner size={14} />
-								{useOcr ? 'Membaca struk…' : 'Mengunggah…'}
-							</span>
-						</div>
-					{:else}
-						<label for="receipt-file" class="group btn btn-secondary btn-sm absolute top-3 right-3 cursor-pointer">
-							<ArrowsClockwise size={14} class="transition-transform duration-500 ease-spring group-hover:rotate-180" />
-							Ganti struk
-						</label>
-					{/if}
-				</div>
-			{/if}
-		</div>
-
-		{#if ocr && !uploading}
-			<div class="mt-4" transition:slide={{ duration: ms(320), easing: ease }}>
-				{#if ocr.status === 'completed'}
-					<div class="rounded-xl border border-line bg-sunken/60 p-4">
-						<div class="mb-3 flex items-center justify-between">
-							<span class="eyebrow">Hasil pembacaan OCR</span>
-							<span class="tag-ocr">DRAFT</span>
-						</div>
-						<dl class="space-y-2 text-[13.5px]">
-							{#each ocrRows as { k, f, v }, i (k)}
-								{@const c = v ? confidence(f) : null}
-								<div class="row-in flex items-center gap-3" style="--d: {i * 70}ms">
-									<span class="grid size-5 shrink-0 place-items-center rounded-full {v ? (isLow(f) ? 'bg-warn/20 text-warn' : 'bg-lime text-on-lime') : 'bg-line text-faint'}">
-										{#if v && isLow(f)}<WarningCircle size={12} weight="bold" />{:else if v}<Check size={11} weight="bold" />{:else}<span class="h-[1.5px] w-2 rounded bg-current"></span>{/if}
-									</span>
-									<dt class="w-20 shrink-0 text-muted">{k}</dt>
-									<dd class="min-w-0 flex-1 truncate {v ? 'font-medium text-ink' : 'text-faint italic'} {k === 'Total' ? 'num' : ''}">
-										{v ?? 'tidak terbaca'}
-									</dd>
-									{#if c != null}
-										<span class="num shrink-0 text-[11.5px] {isLow(f) ? 'font-semibold text-warn' : 'text-faint'}"
-											title="Skor keyakinan OCR">{Math.round(c * 100)}%</span>
-									{/if}
-								</div>
-							{/each}
-						</dl>
-						{#if anyLow}
-							<p class="mt-3 text-[12px] text-warn">Field bertanda kuning kurang jelas terbaca. Cocokkan dengan struk.</p>
-						{/if}
-						{#if ocr.raw_text}
-							<details class="group mt-3 border-t border-line pt-3">
-								<summary class="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-medium text-muted transition-colors hover:text-ink">
-									<CaretRight size={12} class="transition-transform duration-200 group-open:rotate-90" /> Teks mentah
-								</summary>
-								<pre class="code mt-2 max-h-48 overflow-auto rounded-lg bg-surface p-3 text-[11.5px] leading-relaxed whitespace-pre-wrap text-ink-2">{ocr.raw_text}</pre>
-							</details>
-						{/if}
-					</div>
-				{:else}
-					<div class="flex items-start gap-3 rounded-xl border border-warn/35 bg-warn/[0.07] p-4 text-[13.5px] text-ink">
-						<WarningCircle size={18} weight="fill" class="mt-px shrink-0 text-warn" />
-						<p>OCR tidak berhasil: {ocr.error ?? 'gambar tidak dapat diproses'}. Silakan isi formulir secara manual.</p>
-					</div>
-				{/if}
+		{#each items as item, i (item.key)}
+			<div animate:flip={{ duration: ms(320), easing: ease }} in:fly={{ y: 14, duration: ms(320), easing: ease }}
+				out:slide={{ duration: ms(240), easing: ease }}>
+				<ItemEditor
+					bind:item={items[i]}
+					index={i}
+					problem={triedSubmit ? problems[item.key] : null}
+					onaddfiles={(files) => addToItem(item, files)}
+					onremove={() => removeItem(item.key)}
+				/>
 			</div>
-		{/if}
+		{/each}
 
-		{#if duplicates.length > 0 && !uploading}
-			<div class="mt-4 flex items-start gap-3 rounded-xl border border-warn/35 bg-warn/[0.07] p-4 text-[13.5px] text-ink"
-				transition:slide={{ duration: ms(320), easing: ease }}>
-				<WarningCircle size={18} weight="fill" class="mt-px shrink-0 text-warn" />
-				<div>
-					<p class="font-semibold">Struk ini sudah pernah diajukan.</p>
-					<ul class="mt-1 space-y-0.5 text-muted">
-						{#each duplicates as d (d.id)}
-							<li>
-								<a href="/reimburse/{d.id}" target="_blank" rel="noopener" class="code font-medium text-ink underline underline-offset-2">{d.code}</a>
-								· {STATUS_LABEL[d.status]} · <span class="num">{formatRupiah(d.amount)}</span>
-							</li>
-						{/each}
-					</ul>
-					<p class="mt-1.5 text-[12.5px] text-muted">Pastikan ini bukan pengajuan ganda. Admin juga akan melihat peringatan ini.</p>
-				</div>
+		{#if items.length < MAX_ITEMS}
+			<div {...dropHandlers}>
+				<label
+					class="group relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed px-6 text-center transition-[background-color,border-color,transform,padding] duration-300 ease-snap {items.length
+						? 'py-7'
+						: 'min-h-[16rem] py-10'} {dragging ? 'scale-[1.01] border-ink bg-lime/20' : 'border-line-strong hover:border-faint hover:bg-sunken/60'}"
+				>
+					<span class="grid size-12 place-items-center rounded-2xl bg-chip text-on-chip shadow-pop transition-transform duration-500 ease-spring group-hover:-translate-y-1 group-hover:-rotate-6 {dragging ? '-translate-y-2 scale-110 -rotate-6' : ''}">
+						<UploadSimple size={22} weight="bold" />
+					</span>
+					<span class="display mt-1 text-lg text-ink">
+						{dragging ? 'Lepaskan untuk menambah item' : items.length ? 'Tambah struk lain' : 'Tarik foto atau PDF struk ke sini'}
+					</span>
+					<span class="text-[13px] text-muted">
+						Bisa beberapa sekaligus, tiap struk jadi satu item ·
+						<span class="font-medium text-ink underline decoration-line-strong decoration-2 underline-offset-4 transition-colors group-hover:decoration-lime-deep">pilih file</span>
+					</span>
+					<span class="eyebrow mt-1">JPG · PNG · PDF · maks 5 MB per file</span>
+					<input bind:this={dropInput} type="file" multiple accept={ACCEPTED_TYPES.join(',')} class="sr-only"
+						onchange={(e) => addAsItems(e.currentTarget.files)} />
+				</label>
+			</div>
+			<div class="flex justify-center">
+				<button type="button" class="group btn btn-ghost btn-sm text-muted" onclick={addManual}>
+					<Plus size={14} weight="bold" class="transition-transform duration-300 ease-spring group-hover:rotate-90" />
+					Tambah item tanpa struk dulu
+				</button>
 			</div>
 		{/if}
 	</section>
 
-	<!-- Kolom kanan: data pengajuan -->
-	<section class="panel reveal p-5 sm:p-6" style="--d: 180ms">
-		{@render step('02', 'Detail pengeluaran')}
-
-		<div class="mt-6 space-y-5">
-			<div>
-				<span class="label">Kategori</span>
-				<Segmented options={CATEGORIES} bind:value={category} label="Kategori" />
+	<!-- Ringkasan & tombol: tetap terlihat saat menggulir daftar item. -->
+	<div class="sticky bottom-24 z-30 lg:bottom-5">
+		<div class="panel flex items-center justify-between gap-3 px-4 py-3 shadow-float sm:gap-6 sm:px-5 sm:py-3.5">
+			<div class="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-3">
+				<span class="display num text-[1.3rem] text-ink sm:text-[1.6rem]"><CountUp value={total} format={formatRupiah} /></span>
+				<span class="truncate text-[12px] text-muted sm:text-[13px]">
+					{items.length} item
+					{#if pending}
+						<span class="inline-flex items-center gap-1.5 text-ink" transition:slide={{ axis: 'x', duration: ms(200) }}>
+							· <Spinner size={12} /> {pending} file diunggah
+						</span>
+					{/if}
+				</span>
 			</div>
-			<div>
-				<label class="label" for="merchant">Merchant / penyedia {@render ocrTag('merchant', 'merchant')}</label>
-				<input id="merchant" class="input {fromOcr.merchant ? 'ocr-flash' : ''}" bind:value={merchant}
-					placeholder="mis. Blue Taxi, Kopi Senja" />
-			</div>
-			<div class="grid gap-5 sm:grid-cols-2">
-				<div>
-					<label class="label" for="date">Tanggal transaksi <span class="text-danger">*</span> {@render ocrTag('date', 'transaction_date')}</label>
-					<input id="date" type="date" class="input {fromOcr.date ? 'ocr-flash' : ''}" max={today}
-						bind:value={transactionDate} required />
-				</div>
-				<div>
-					<label class="label" for="amount">Nominal <span class="text-danger">*</span> {@render ocrTag('amount', 'total_amount')}</label>
-					<AmountInput id="amount" bind:value={amount} required class={fromOcr.amount ? 'ocr-flash' : ''} />
-				</div>
-			</div>
-			<div>
-				<label class="label" for="desc">Keterangan / keperluan <span class="text-danger">*</span></label>
-				<textarea id="desc" rows="3" class="input" bind:value={description} required
-					placeholder="mis. Taksi ke kantor klien PT ABC untuk meeting"></textarea>
-			</div>
-
-			{#if needsConfirm}
-				<label
-					class="flex cursor-pointer items-start gap-3 rounded-xl border p-4 text-[13.5px] text-ink-2 transition-[background-color,border-color] duration-300 {ocrConfirmed
-						? 'border-lime-deep bg-lime/25'
-						: 'border-warn/40 bg-warn/[0.07]'}"
-					transition:slide={{ duration: ms(320), easing: ease }}
-				>
-					<input type="checkbox" class="check mt-0.5" bind:checked={ocrConfirmed} />
-					<span>
-						<span class="font-semibold text-ink">Saya sudah memeriksa hasil OCR.</span>
-						Merchant, tanggal, dan nominal sudah saya cocokkan dengan struk asli.
-					</span>
-				</label>
-			{/if}
-		</div>
-
-		<div class="mt-7 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
-			<p class="text-[12px] text-muted"><span class="text-danger">*</span> wajib diisi</p>
-			<div class="flex gap-2">
-				<button type="button" class="btn btn-secondary" disabled={busy} onclick={() => save(false)}>
-					{#if saving === 'draft'}<Spinner size={14} />{/if} Simpan draft
+			<div class="flex shrink-0 gap-2">
+				<button type="button" class="btn btn-secondary" disabled={busy || pending > 0} onclick={() => save(false)}>
+					{#if saving === 'draft'}<Spinner size={14} />{/if} <span class="max-sm:hidden">Simpan draft</span><span class="sm:hidden">Draft</span>
 				</button>
-				<button type="submit" class="group btn btn-primary" disabled={busy}>
+				<button type="submit" class="group btn btn-primary" disabled={busy || pending > 0}>
 					{#if saving === 'submit'}
 						<Spinner size={14} /> Mengirim…
 					{:else}
-						Kirim pengajuan
+						<span class="max-sm:hidden">Kirim pengajuan</span><span class="sm:hidden">Kirim</span>
 						<ArrowRight size={15} weight="bold" class="transition-transform duration-300 ease-spring group-hover:translate-x-1" />
 					{/if}
 				</button>
 			</div>
 		</div>
-	</section>
+	</div>
 </form>

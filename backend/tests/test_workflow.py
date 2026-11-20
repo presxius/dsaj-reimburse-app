@@ -4,7 +4,7 @@ from decimal import Decimal
 import app.routes.receipts as receipts_route
 from app.ocr import OcrUnavailable
 
-from .conftest import PNG, new_submission, upload
+from .conftest import PNG, item, new_submission, upload
 
 
 def act(client, rid, action, **body):
@@ -51,10 +51,13 @@ def test_revision_cycle(login):
     assert act(admin, rid, "admin_return").status_code == 400  # catatan wajib
     assert act(admin, rid, "admin_return", note="Struk buram").json["status"] == "revision_required"
 
-    body = {"category": "transport", "transaction_date": "2026-01-10", "amount": 45000,
-            "description": "Taksi (revisi)", "submit": True}
+    current = emp.get(f"/api/reimbursements/{rid}").json["items"][0]
+    body = {"category": "transport", "purpose": "Taksi (revisi)", "submit": True,
+            "items": [{"id": current["id"], "transaction_date": "2026-01-10", "amount": 45000,
+                       "receipt_ids": [rc["id"] for rc in current["receipts"]]}]}
     res = emp.put(f"/api/reimbursements/{rid}", json=body)
     assert res.status_code == 200 and res.json["status"] == "submitted"
+    assert res.json["amount"] == 45000
     assert emp.put(f"/api/reimbursements/{rid}", json=body).status_code == 409
 
 
@@ -77,7 +80,7 @@ def test_access_control(login):
     boss = login("atasan")
     assert act(boss, rid, "approve").status_code == 404
 
-    receipt_id = emp.get(f"/api/reimbursements/{rid}").json["receipt"]["id"]
+    receipt_id = emp.get(f"/api/reimbursements/{rid}").json["items"][0]["receipts"][0]["id"]
     assert other.get(f"/api/receipts/{receipt_id}/file").status_code == 403
     assert login("admin.transport").get(f"/api/receipts/{receipt_id}/file").status_code == 200
 
@@ -110,12 +113,19 @@ def test_upload_validation(login):
 
 def test_submit_requires_receipt_and_valid_fields(login):
     emp = login("karyawan")
-    base = {"category": "consumption", "transaction_date": "2026-01-10", "amount": 10000,
-            "description": "Makan siang"}
-    assert emp.post("/api/reimbursements", json={**base, "submit": True}).status_code == 400
-    assert emp.post("/api/reimbursements", json={**base, "amount": -5}).status_code == 400
-    assert emp.post("/api/reimbursements", json={**base, "category": "hotel"}).status_code == 400
-    draft = emp.post("/api/reimbursements", json=base)
+
+    def post(submit=False, items=None, **extra):
+        body = {"category": "consumption", "purpose": "Makan siang", "submit": submit,
+                "items": items if items is not None else [item(emp, receipt=False)], **extra}
+        return emp.post("/api/reimbursements", json=body)
+
+    res = post(submit=True)
+    assert res.status_code == 400 and "Item 1" in res.json["error"]
+    assert post(submit=True, items=[]).status_code == 400
+    assert post(items=[item(emp, receipt=False, amount=-5)]).status_code == 400
+    assert post(category="hotel").status_code == 400
+    assert post(purpose=" ").status_code == 400
+    draft = post()
     assert draft.status_code == 201 and draft.json["status"] == "draft"
     assert login("admin.konsumsi").get("/api/reimbursements").json == []  # draft tidak terlihat
 
@@ -129,13 +139,15 @@ def test_ocr_result_must_be_confirmed(login, monkeypatch):
     assert scan["ocr"]["status"] == "completed"
     assert scan["ocr"]["total_amount"] == 55000 and scan["ocr"]["transaction_date"] is None
 
-    body = {"category": "consumption", "transaction_date": "2026-01-10", "amount": 55000,
-            "description": "Rapat", "merchant": "KOPI SENJA", "receipt_id": scan["id"], "submit": True}
-    assert emp.post("/api/reimbursements", json=body).status_code == 400
-    res = emp.post("/api/reimbursements", json={**body, "ocr_confirmed": True})
+    def body(confirmed):
+        return {"category": "consumption", "purpose": "Rapat", "submit": True,
+                "items": [{"transaction_date": "2026-01-10", "amount": 55000, "merchant": "KOPI SENJA",
+                           "receipt_ids": [scan["id"]], "ocr_confirmed": confirmed}]}
+    assert emp.post("/api/reimbursements", json=body(False)).status_code == 400
+    res = emp.post("/api/reimbursements", json=body(True))
     assert res.status_code == 201
-    assert res.json["ocr_confirmed"] is True
-    assert res.json["ocr_corrected"] is True  # tanggal diisi manual
+    assert res.json["items"][0]["ocr_confirmed"] is True
+    assert res.json["items"][0]["ocr_corrected"] is True  # tanggal diisi manual
 
 
 def test_ocr_unavailable_falls_back_to_manual(login, monkeypatch):
@@ -145,11 +157,12 @@ def test_ocr_unavailable_falls_back_to_manual(login, monkeypatch):
     emp = login("karyawan")
     scan = upload(emp, path="/api/ocr/scan").json
     assert scan["ocr"]["status"] == "failed"
-    res = new_submission(emp, receipt_id=scan["id"])
+    res = new_submission(emp, items=[item(emp, receipt=False, receipt_ids=[scan["id"]])])
     assert res.status_code == 201 and res.json["status"] == "submitted"
 
 
 def test_future_date_rejected(login):
     emp = login("karyawan")
     future = date.today().replace(year=date.today().year + 1).isoformat()
-    assert new_submission(emp, transaction_date=future).status_code == 400
+    res = new_submission(emp, items=[item(emp, transaction_date=future)])
+    assert res.status_code == 400 and "masa depan" in res.json["error"]

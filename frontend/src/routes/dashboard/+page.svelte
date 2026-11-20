@@ -6,7 +6,7 @@
 	import EmptyState from '#lib/components/EmptyState.svelte';
 	import CategoryIcon from '#lib/components/CategoryIcon.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
-	import { CATEGORY_LABEL, ROLE_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
+	import { CATEGORY_LABEL, ROLE_LABEL, formatDateRange, formatRupiah } from '#lib/labels.ts';
 	import { api } from '#lib/services/api.ts';
 	import { auth, notifyError } from '#lib/session.svelte.ts';
 	import type { Reimbursement, Role, Status, Summary } from '#lib/types/index.ts';
@@ -231,9 +231,9 @@
 								class="group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl px-3 py-3 transition-colors duration-150 hover:bg-sunken/70 sm:grid-cols-[auto_1fr_9rem_8rem_auto]">
 								<CategoryIcon category={r.category} />
 								<div class="min-w-0">
-									<div class="truncate font-medium text-ink">{r.merchant ?? r.description}</div>
+									<div class="truncate font-medium text-ink">{r.purpose}</div>
 									<div class="truncate text-[12.5px] text-muted">
-										<span class="code">{r.code}</span> · {role === 'employee' ? formatDate(r.transaction_date) : r.employee.name}
+										<span class="code">{r.code}</span> · {role === 'employee' ? formatDateRange(r.date_from, r.date_to) : r.employee.name} · {r.item_count} item
 									</div>
 								</div>
 								<div class="hidden sm:block"><StatusBadge status={r.status} /></div>

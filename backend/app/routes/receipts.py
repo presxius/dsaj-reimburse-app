@@ -17,8 +17,8 @@ bp = Blueprint("receipts", __name__, url_prefix="/api")
 def _upload_response(receipt):
     """Data struk + pengajuan karyawan ini yang sudah memakai file yang sama."""
     data = receipt.to_dict()
-    data["duplicates"] = [duplicates.to_dict(r, "same_file") for r in duplicates.same_file(receipt.sha256)
-                          if can_view(g.user, r)]
+    data["duplicates"] = [duplicates.to_dict(item, "same_file") for item in duplicates.same_file(receipt.sha256)
+                          if can_view(g.user, item.reimbursement)]
     return jsonify(data), 201
 
 

@@ -38,9 +38,14 @@ def upload(client, path="/api/receipts", content=PNG, name="struk.png"):
                        content_type="multipart/form-data")
 
 
-def new_submission(client, category="transport", submit=True, **extra):
-    receipt = upload(client).json
-    body = {"category": category, "transaction_date": "2026-01-10", "amount": 50000,
-            "description": "Taksi ke kantor klien", "merchant": "Blue Taxi",
-            "receipt_id": receipt["id"], "submit": submit, **extra}
+def item(client, receipt=True, content=PNG, **fields):
+    """Satu item pengajuan; receipt=True mengunggah struk baru untuknya."""
+    receipt_ids = [upload(client, content=content).json["id"]] if receipt else []
+    return {"transaction_date": "2026-01-10", "amount": 50000, "merchant": "Blue Taxi",
+            "receipt_ids": receipt_ids, **fields}
+
+
+def new_submission(client, category="transport", submit=True, items=None, **extra):
+    body = {"category": category, "purpose": "Taksi ke kantor klien",
+            "items": items if items is not None else [item(client)], "submit": submit, **extra}
     return client.post("/api/reimbursements", json=body)

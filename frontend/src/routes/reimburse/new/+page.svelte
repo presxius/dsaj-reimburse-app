@@ -7,6 +7,6 @@
 <PageHeader
 	eyebrow="Pengajuan baru"
 	title="Ajukan Reimburse"
-	description="Unggah struk transportasi atau konsumsi. OCR akan mencoba mengisi formulir; periksa lagi sebelum mengirim."
+	description="Satu pengajuan bisa berisi banyak struk dari kategori yang sama. Tiap struk jadi satu item; OCR mencoba mengisinya, periksa lagi sebelum mengirim."
 />
 <ReimbursementForm onsaved={(r) => goto(`/reimburse/${r.id}`)} />

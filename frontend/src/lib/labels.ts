@@ -88,3 +88,25 @@ export function formatDate(iso: string | null | undefined, withTime = false): st
 		...(withTime ? { hour: '2-digit', minute: '2-digit' } : {})
 	});
 }
+
+/** "4 Nov 2026" atau "4 – 6 Nov 2026" untuk rentang tanggal item. */
+export function formatDateRange(from: string | null | undefined, to: string | null | undefined): string {
+	if (!from) return '-';
+	if (!to || to === from) return formatDate(from);
+	const a = new Date(from + 'T00:00:00');
+	const b = new Date(to + 'T00:00:00');
+	const sameYear = a.getFullYear() === b.getFullYear();
+	const sameMonth = sameYear && a.getMonth() === b.getMonth();
+	const start = a.toLocaleDateString('id-ID', {
+		day: '2-digit',
+		...(sameMonth ? {} : { month: 'short' }),
+		...(sameYear ? {} : { year: 'numeric' })
+	});
+	return `${start} – ${formatDate(to)}`;
+}
+
+/** Ringkasan item: "3 item · GoRide, Grab +1". */
+export function itemSummary(r: { item_count: number; merchants: string[] }): string {
+	const names = r.merchants.length > 2 ? `${r.merchants.slice(0, 2).join(', ')} +${r.merchants.length - 2}` : r.merchants.join(', ');
+	return [`${r.item_count} item`, names].filter(Boolean).join(' · ');
+}

@@ -1,49 +1,72 @@
-"""Deteksi kemungkinan struk duplikat (PRD Future Improvements #5).
+"""Deteksi kemungkinan struk duplikat (PRD Future Improvements #5), per item pengeluaran.
 
 Hanya peringatan untuk admin/karyawan, bukan penolakan otomatis: transaksi kembar yang sah
 (mis. dua kali naik taksi dengan tarif sama) tetap bisa diajukan.
 """
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func, or_
 
-from ..models import Receipt, Reimbursement, Status
+from ..models import Receipt, Reimbursement, ReimbursementItem, Status
 
 
-def same_file(sha256, exclude_id=None):
-    """Pengajuan (bukan draft) yang melampirkan file struk identik."""
+def _items_query():
+    return ReimbursementItem.query.join(Reimbursement, ReimbursementItem.reimbursement_id == Reimbursement.id)
+
+
+def same_file(sha256, exclude_item_id=None):
+    """Item pada pengajuan (bukan draft) yang melampirkan file struk identik."""
     if not sha256:
         return []
-    q = Reimbursement.query.filter(Reimbursement.status != Status.DRAFT,
-                                   Reimbursement.receipt.has(Receipt.sha256 == sha256))
-    if exclude_id:
-        q = q.filter(Reimbursement.id != exclude_id)
-    return q.order_by(Reimbursement.id).all()
+    q = _items_query().filter(Reimbursement.status != Status.DRAFT,
+                              ReimbursementItem.receipts.any(Receipt.sha256 == sha256))
+    if exclude_item_id:
+        q = q.filter(ReimbursementItem.id != exclude_item_id)
+    return q.order_by(ReimbursementItem.id).all()
 
 
-def find_duplicates(r):
-    """Kembalikan [(pengajuan_lain, alasan)], alasan: 'same_file' atau 'same_data'.
+def _candidates(r, item):
+    """Item lain (pengajuan bukan draft, atau item lain di pengajuan yang sama) yang mirip `item`.
 
+    Kembalikan [(item_lain, alasan)], alasan: 'same_file' atau 'same_data'.
     'same_data' = kategori, tanggal, dan nominal sama, dari karyawan yang sama
     atau dengan merchant yang sama.
     """
-    found = {d.id: (d, "same_file") for d in same_file(r.receipt.sha256 if r.receipt else None, r.id)}
+    visible = or_(Reimbursement.status != Status.DRAFT, Reimbursement.id == r.id)
+    found = {}
 
-    same_owner_or_merchant = [Reimbursement.employee_id == r.employee_id]
-    if r.merchant:
-        same_owner_or_merchant.append(func.lower(Reimbursement.merchant) == r.merchant.lower())
-    similar = Reimbursement.query.filter(
-        Reimbursement.id != r.id,
-        Reimbursement.status != Status.DRAFT,
-        and_(Reimbursement.category == r.category,
-             Reimbursement.transaction_date == r.transaction_date,
-             Reimbursement.amount == r.amount),
-        or_(*same_owner_or_merchant),
-    ).order_by(Reimbursement.id).all()
-    for d in similar:
-        found.setdefault(d.id, (d, "same_data"))
+    hashes = [rc.sha256 for rc in item.receipts if rc.sha256]
+    if hashes:
+        for other in _items_query().filter(
+                visible, ReimbursementItem.id != item.id,
+                ReimbursementItem.receipts.any(Receipt.sha256.in_(hashes))).order_by(ReimbursementItem.id):
+            found[other.id] = (other, "same_file")
+
+    owner_or_merchant = [Reimbursement.employee_id == r.employee_id]
+    if item.merchant:
+        owner_or_merchant.append(func.lower(ReimbursementItem.merchant) == item.merchant.lower())
+    for other in _items_query().filter(
+            visible, ReimbursementItem.id != item.id,
+            Reimbursement.category == r.category,
+            ReimbursementItem.transaction_date == item.transaction_date,
+            ReimbursementItem.amount == item.amount,
+            or_(*owner_or_merchant)).order_by(ReimbursementItem.id):
+        found.setdefault(other.id, (other, "same_data"))
     return list(found.values())
 
 
-def to_dict(r, reason):
+def find_duplicates(r, visible_to=lambda reimbursement: True):
+    """{item_id: [match, ...]} untuk semua item pengajuan `r` yang punya kemungkinan duplikat."""
+    result = {}
+    for item in r.items:
+        matches = [to_dict(other, reason, r) for other, reason in _candidates(r, item)
+                   if other.reimbursement_id == r.id or visible_to(other.reimbursement)]
+        if matches:
+            result[item.id] = matches
+    return result
+
+
+def to_dict(item, reason, current=None):
+    r = item.reimbursement
     return {"id": r.id, "code": r.code, "status": r.status, "employee": r.employee.name,
-            "transaction_date": r.transaction_date.isoformat(), "amount": float(r.amount),
-            "reason": reason}
+            "item_id": item.id, "merchant": item.merchant,
+            "transaction_date": item.transaction_date.isoformat(), "amount": float(item.amount),
+            "reason": reason, "same_claim": current is not None and r.id == current.id}

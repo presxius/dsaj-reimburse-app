@@ -93,38 +93,44 @@ class User(db.Model):
         }
 
 
+# Batas jumlah per pengajuan (mengikuti aplikasi reimburse umum; ubah sesuai kebijakan).
+MAX_ITEMS = 30
+MAX_RECEIPTS_PER_ITEM = 5
+
+
 class Reimbursement(db.Model):
+    """Satu pengajuan (laporan) berisi beberapa item pengeluaran dengan kategori yang sama."""
     __tablename__ = "reimbursements"
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(30), unique=True, index=True)
     employee_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     category = db.Column(db.String(20), nullable=False, index=True)
-    merchant = db.Column(db.String(200))
-    transaction_date = db.Column(db.Date, nullable=False)
-    description = db.Column(db.Text, nullable=False)
-    amount = db.Column(db.Numeric(14, 2), nullable=False)
+    purpose = db.Column(db.Text, nullable=False)  # keperluan pengajuan (business purpose)
+    amount = db.Column(db.Numeric(14, 2), nullable=False)  # total = jumlah nominal semua item
     status = db.Column(db.String(30), nullable=False, default=Status.DRAFT, index=True)
-    # Penanda bahwa karyawan sudah meninjau hasil OCR, dan apakah ada koreksi.
-    ocr_confirmed = db.Column(db.Boolean, default=False, nullable=False)
-    ocr_corrected = db.Column(db.Boolean, default=False, nullable=False)
     submitted_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
     employee = db.relationship("User", foreign_keys=[employee_id])
-    receipt = db.relationship("Receipt", uselist=False, back_populates="reimbursement")
+    items = db.relationship("ReimbursementItem", order_by="ReimbursementItem.position",
+                            back_populates="reimbursement", cascade="all, delete-orphan")
     history = db.relationship("Approval", order_by="Approval.id", back_populates="reimbursement")
     payment = db.relationship("Payment", uselist=False, back_populates="reimbursement")
 
     def to_dict(self, detail=False):
+        dates = [i.transaction_date for i in self.items]
+        merchants = list(dict.fromkeys(i.merchant for i in self.items if i.merchant))
         data = {
             "id": self.id,
             "code": self.code,
             "category": self.category,
-            "merchant": self.merchant,
-            "transaction_date": self.transaction_date.isoformat(),
-            "description": self.description,
+            "purpose": self.purpose,
             "amount": float(self.amount),
+            "item_count": len(self.items),
+            "merchants": merchants,
+            "date_from": min(dates).isoformat() if dates else None,
+            "date_to": max(dates).isoformat() if dates else None,
             "status": self.status,
             "submitted_at": self.submitted_at.isoformat() if self.submitted_at else None,
             "created_at": self.created_at.isoformat(),
@@ -136,20 +142,56 @@ class Reimbursement(db.Model):
         }
         if detail:
             data.update({
-                "ocr_confirmed": self.ocr_confirmed,
-                "ocr_corrected": self.ocr_corrected,
-                "receipt": self.receipt.to_dict() if self.receipt else None,
+                "items": [i.to_dict() for i in self.items],
                 "history": [h.to_dict() for h in self.history],
                 "payment": self.payment.to_dict() if self.payment else None,
             })
         return data
 
 
+class ReimbursementItem(db.Model):
+    """Satu transaksi: merchant, tanggal, nominal, dan satu atau beberapa file bukti."""
+    __tablename__ = "reimbursement_items"
+    id = db.Column(db.Integer, primary_key=True)
+    reimbursement_id = db.Column(db.Integer, db.ForeignKey("reimbursements.id"), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    merchant = db.Column(db.String(200))
+    transaction_date = db.Column(db.Date, nullable=False, index=True)
+    amount = db.Column(db.Numeric(14, 2), nullable=False)
+    note = db.Column(db.Text)
+    # Penanda bahwa karyawan sudah meninjau hasil OCR item ini, dan apakah ada koreksi.
+    ocr_confirmed = db.Column(db.Boolean, default=False, nullable=False)
+    ocr_corrected = db.Column(db.Boolean, default=False, nullable=False)
+    # Catatan admin/atasan saat pengajuan dikembalikan; dihapus saat dikirim ulang.
+    review_note = db.Column(db.Text)
+
+    reimbursement = db.relationship("Reimbursement", back_populates="items")
+    receipts = db.relationship("Receipt", order_by="Receipt.id", back_populates="item")
+
+    def ocr_source(self):
+        """Hasil OCR yang menjadi acuan item: struk pertama yang berhasil dibaca."""
+        return next((rc.ocr_result for rc in self.receipts
+                     if rc.ocr_result and rc.ocr_result.status == "completed"), None)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "merchant": self.merchant,
+            "transaction_date": self.transaction_date.isoformat(),
+            "amount": float(self.amount),
+            "note": self.note,
+            "ocr_confirmed": self.ocr_confirmed,
+            "ocr_corrected": self.ocr_corrected,
+            "review_note": self.review_note,
+            "receipts": [rc.to_dict() for rc in self.receipts],
+        }
+
+
 class Receipt(db.Model):
     __tablename__ = "receipts"
     id = db.Column(db.Integer, primary_key=True)
-    # Kosong saat struk baru diunggah (mis. untuk OCR) dan belum menjadi bagian pengajuan.
-    reimbursement_id = db.Column(db.Integer, db.ForeignKey("reimbursements.id"), unique=True)
+    # Kosong saat struk baru diunggah (mis. untuk OCR) dan belum dipasang ke item pengajuan.
+    item_id = db.Column(db.Integer, db.ForeignKey("reimbursement_items.id"), index=True)
     original_filename = db.Column(db.String(255), nullable=False)
     storage_key = db.Column(db.String(255), unique=True, nullable=False)
     file_type = db.Column(db.String(50), nullable=False)
@@ -159,8 +201,12 @@ class Receipt(db.Model):
     uploaded_by = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     uploaded_at = db.Column(db.DateTime, default=utcnow, nullable=False)
 
-    reimbursement = db.relationship("Reimbursement", back_populates="receipt")
+    item = db.relationship("ReimbursementItem", back_populates="receipts")
     ocr_result = db.relationship("OcrResult", uselist=False, back_populates="receipt")
+
+    @property
+    def reimbursement(self):
+        return self.item.reimbursement if self.item else None
 
     def to_dict(self):
         return {

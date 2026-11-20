@@ -184,16 +184,50 @@ Pratinjau di form dan halaman detail memakai thumbnail PNG halaman pertama
 (`GET /api/receipts/<id>/preview`, lebar 800 px). Thumbnail dibuat saat pertama diminta lalu disimpan
 di samping file aslinya (`<storage_key>.preview.png`).
 
+## Pengajuan multi-item
+
+Satu pengajuan (`reimbursements`) berisi satu atau lebih **item** (`reimbursement_items`), seperti
+*expense report* di Concur/Expensify/Odoo:
+
+- **Satu item = satu transaksi**: merchant, tanggal, nominal, catatan opsional, dan 1–5 file bukti
+  (`receipts.item_id`). File tambahan dipakai untuk halaman lanjutan struk atau bukti bayar transaksi
+  yang sama; transaksi lain, walau di merchant yang sama, menjadi item sendiri.
+- **Kategori per pengajuan**: semua item satu pengajuan transport saja atau konsumsi saja, sehingga
+  verifikasi tetap oleh satu admin.
+- **Keperluan** (`purpose`) wajib di tingkat pengajuan. **Total** (`amount`) = jumlah nominal item,
+  dihitung ulang setiap kali disimpan.
+- Batas: maks **30 item** per pengajuan dan **5 file** per item (`MAX_ITEMS`, `MAX_RECEIPTS_PER_ITEM` di
+  `backend/app/models.py`, juga `frontend/src/lib/draft.ts`).
+- Di form, beberapa struk bisa diunggah sekaligus; tiap file menjadi item baru dan di-OCR **satu per satu**
+  (antre) agar server tidak kehabisan RAM. Konfirmasi hasil OCR dilakukan per item.
+- **Kembalikan untuk revisi** berlaku untuk seluruh pengajuan, dengan catatan per item
+  (`item_notes: {item_id: catatan}` → `reimbursement_items.review_note`). Catatan item ikut disimpan di
+  riwayat dan dihapus dari item saat karyawan mengirim ulang. Penolakan sebagian item belum didukung.
+- Pembayaran sekali per pengajuan sebesar totalnya. **Export CSV satu baris per item**, dengan kode dan
+  total pengajuan di setiap baris.
+
+Payload `POST/PUT /api/reimbursements`:
+
+```json
+{"category": "transport", "purpose": "Kunjungan klien", "submit": true,
+ "items": [{"id": 12, "merchant": "GoRide", "transaction_date": "2026-11-04", "amount": 32500,
+            "note": null, "receipt_ids": [31, 32], "ocr_confirmed": true}]}
+```
+
+Item tanpa `id` dibuat baru, item yang tidak ada di daftar dihapus (file struknya dilepas, tidak dihapus
+dari storage). Migrasi `c5e2a7f1b8d4` mengubah setiap pengajuan lama menjadi pengajuan dengan satu item.
+
 ## Deteksi struk duplikat
 
-Pengajuan ditandai "kemungkinan ganda" (peringatan saja, tidak memblokir) bila ada pengajuan lain
-yang bukan draft dengan:
+Setiap **item** ditandai "kemungkinan ganda" (peringatan saja, tidak memblokir) bila ada item lain,
+di pengajuan lain yang bukan draft atau di pengajuan yang sama, dengan:
 
 - **file struk identik** (hash SHA-256 isi file, kolom `receipts.sha256`), atau
 - **kategori, tanggal, dan nominal sama**, dari karyawan yang sama atau dengan merchant yang sama.
 
 Karyawan diperingatkan saat mengunggah struk yang sudah pernah ia ajukan; admin/atasan/finance melihat
-banner di halaman detail. Daftar duplikat hanya berisi pengajuan yang boleh dilihat pengguna tersebut.
+banner dan rincian per item di halaman detail. Daftar duplikat hanya berisi pengajuan yang boleh dilihat
+pengguna tersebut.
 Logika: `backend/app/services/duplicates.py`.
 
 ## Alur status
@@ -210,8 +244,7 @@ Setiap perubahan status tercatat di tabel `approvals` (riwayat) dan `activity_lo
 
 Disepakati untuk versi ini dan mudah diubah:
 
-1. **Satu struk per pengajuan.** Detail pengeluaran disimpan langsung di tabel `reimbursements`
-   (entitas *Reimbursement Details* digabung karena hanya satu item).
+1. **Satu pengajuan bisa berisi banyak item** dari kategori yang sama (lihat *Pengajuan multi-item*).
 2. **Admin boleh menolak secara final** (selain mengembalikan untuk revisi). Alasan wajib.
 3. **Atasan = atasan langsung** tiap karyawan (`users.approver_id`), diatur oleh Super Admin.
 4. **Export laporan dalam CSV** (bisa dibuka di Excel).

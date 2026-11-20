@@ -24,7 +24,7 @@
 <PageHeader
 	eyebrow={item ? item.code : 'Memuat…'}
 	title={item?.status === 'draft' ? 'Lanjutkan Draft' : 'Perbaiki Pengajuan'}
-	description="Perbarui data atau struk, lalu kirim kembali."
+	description="Perbaiki item yang ditandai, tambah atau hapus item, lalu kirim kembali."
 />
 
 {#if item}
@@ -38,7 +38,7 @@
 					<p class="text-[13px] text-muted">
 						Dikembalikan oleh <span class="font-medium text-ink">{lastReturn.actor.name}</span> · {ROLE_LABEL[lastReturn.actor.role]}
 					</p>
-					<p class="mt-1 text-[15px] text-ink">“{lastReturn.note}”</p>
+					<p class="mt-1 text-[15px] whitespace-pre-line text-ink">{lastReturn.note}</p>
 				</div>
 			</div>
 		{/if}

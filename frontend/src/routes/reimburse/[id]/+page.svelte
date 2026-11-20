@@ -1,14 +1,12 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeftIcon';
-	import ArrowSquareOut from 'phosphor-svelte/lib/ArrowSquareOutIcon';
 	import Copy from 'phosphor-svelte/lib/CopyIcon';
 	import Check from 'phosphor-svelte/lib/CheckIcon';
-	import FilePdf from 'phosphor-svelte/lib/FilePdfIcon';
 	import PencilSimple from 'phosphor-svelte/lib/PencilSimpleIcon';
-	import Receipt from 'phosphor-svelte/lib/ReceiptIcon';
 	import WarningCircle from 'phosphor-svelte/lib/WarningCircleIcon';
 	import CategoryIcon from '#lib/components/CategoryIcon.svelte';
+	import ItemView from '#lib/components/ItemView.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import StatusTracker from '#lib/components/StatusTracker.svelte';
 	import AmountInput from '#lib/components/AmountInput.svelte';
@@ -17,10 +15,9 @@
 		ACTION_LABEL,
 		CATEGORY_LABEL,
 		DUPLICATE_REASON_LABEL,
-		OCR_LOW_CONFIDENCE,
 		ROLE_LABEL,
-		STATUS_LABEL,
 		formatDate,
+		formatDateRange,
 		formatRupiah
 	} from '#lib/labels.ts';
 	import { api } from '#lib/services/api.ts';
@@ -28,6 +25,7 @@
 	import type { Action, ReimbursementDetail } from '#lib/types/index.ts';
 
 	const NOTE_REQUIRED: Action[] = ['admin_return', 'admin_reject', 'approver_return', 'approver_reject'];
+	const RETURN: Action[] = ['admin_return', 'approver_return'];
 	const DANGER: Action[] = ['admin_reject', 'approver_reject'];
 	const WARNING: Action[] = ['admin_return', 'approver_return'];
 	// Penanda status saja, bukan keputusan; tampil sebagai tombol sekunder.
@@ -41,7 +39,8 @@
 	let armed = $state<Action | null>(null);
 	let noteShake = $state(false);
 	let copied = $state(false);
-	let imgFailed = $state(false);
+	/** Catatan revisi per item yang ditandai reviewer: { [item_id]: catatan } */
+	let itemNotes = $state<Record<number, string | undefined>>({});
 	let noteEl = $state<HTMLTextAreaElement>();
 	let payment = $state<{ payment_date: string; reference: string; amount: number | null }>({
 		payment_date: new Date().toLocaleDateString('en-CA'),
@@ -73,35 +72,13 @@
 	const canEdit = $derived(
 		item && auth.user?.id === item.employee.id && ['draft', 'revision_required'].includes(item.status)
 	);
-	const ocr = $derived(item?.receipt?.ocr ?? null);
 	const timeline = $derived(item ? [...item.history].reverse() : []);
-	const compare = $derived.by(() => {
-		if (!item || ocr?.status !== 'completed') return [];
-		const conf = ocr.confidence ?? {};
-		return [
-			{
-				label: 'Merchant',
-				ocr: ocr.merchant,
-				conf: conf.merchant ?? null,
-				final: item.merchant,
-				same: (ocr.merchant || null) === (item.merchant || null)
-			},
-			{
-				label: 'Tanggal',
-				ocr: ocr.transaction_date ? formatDate(ocr.transaction_date) : null,
-				conf: conf.transaction_date ?? null,
-				final: formatDate(item.transaction_date),
-				same: ocr.transaction_date === item.transaction_date
-			},
-			{
-				label: 'Total',
-				ocr: ocr.total_amount != null ? formatRupiah(ocr.total_amount) : null,
-				conf: conf.total_amount ?? null,
-				final: formatRupiah(item.amount),
-				same: ocr.total_amount != null && Number(ocr.total_amount) === Number(item.amount)
-			}
-		];
-	});
+	const canReturn = $derived(actions.some((a) => RETURN.includes(a)));
+	const flagged = $derived(
+		Object.entries(itemNotes).filter((e): e is [string, string] => e[1] !== undefined && e[1].trim() !== '')
+	);
+	const duplicateCount = $derived(Object.keys(item?.duplicates ?? {}).length);
+	const itemIndex = (id: number) => (item?.items.findIndex((i) => i.id === id) ?? -1) + 1;
 
 	function arm(action: Action) {
 		armed = action;
@@ -111,7 +88,8 @@
 
 	async function run(action: Action) {
 		if (!item) return;
-		if (NOTE_REQUIRED.includes(action) && !note.trim()) {
+		// Untuk "kembalikan", catatan per item yang ditandai sudah cukup sebagai alasan.
+		if (NOTE_REQUIRED.includes(action) && !note.trim() && !(RETURN.includes(action) && flagged.length)) {
 			noteShake = false;
 			requestAnimationFrame(() => (noteShake = true));
 			noteEl?.focus();
@@ -122,9 +100,15 @@
 		armed = null;
 		busy = action;
 		try {
-			const body = action === 'mark_paid' ? { ...payment, note } : { note };
+			const body =
+				action === 'mark_paid'
+					? { ...payment, note }
+					: RETURN.includes(action)
+						? { note, item_notes: Object.fromEntries(flagged) }
+						: { note };
 			item = await api.post<ReimbursementDetail>(`/reimbursements/${item.id}/actions/${action}`, body);
 			note = '';
+			itemNotes = {};
 			notify(`Berhasil: ${ACTION_LABEL[action]}.`);
 		} catch (e) {
 			notifyError(e);
@@ -198,8 +182,8 @@
 				</button>
 				{#if copied}<span class="text-[12px] text-muted" style="animation: pop-in 260ms var(--ease)">Tersalin</span>{/if}
 			</div>
-			<h1 class="display reveal mt-1 text-[2.25rem] text-ink sm:text-[2.85rem]" style="--d: 40ms">
-				{item.merchant ?? CATEGORY_LABEL[item.category]}
+			<h1 class="display reveal mt-1 line-clamp-2 text-[2rem] text-ink sm:text-[2.5rem]" style="--d: 40ms">
+				{item.purpose}
 			</h1>
 			<div class="reveal mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[13.5px] text-muted" style="--d: 80ms">
 				<StatusBadge status={item.status} pill />
@@ -207,11 +191,13 @@
 				<span class="text-line-strong">/</span>
 				<span>{item.employee.name}</span>
 				<span class="text-line-strong">/</span>
-				<span class="num">{formatDate(item.transaction_date)}</span>
+				<span class="num">{formatDateRange(item.date_from, item.date_to)}</span>
+				<span class="text-line-strong">/</span>
+				<span>{item.item_count} item</span>
 			</div>
 		</div>
 		<div class="reveal sm:text-right" style="--d: 120ms">
-			<p class="eyebrow">Nominal</p>
+			<p class="eyebrow">Total</p>
 			<p class="display num mt-1.5 text-[2.5rem] text-ink sm:text-[3rem]">{formatRupiah(item.amount)}</p>
 			{#if canEdit}
 				<a href="/reimburse/{item.id}/edit" class="group btn btn-primary mt-3">
@@ -222,19 +208,21 @@
 		</div>
 	</header>
 
-	{#if item.duplicates?.length}
+	{#if duplicateCount}
 		<section class="reveal mb-5 flex items-start gap-3 rounded-2xl border border-warn/35 bg-warn/[0.07] p-4 text-[13.5px] text-ink sm:p-5"
 			style="--d: 140ms" role="alert">
 			<WarningCircle size={20} weight="fill" class="mt-px shrink-0 text-warn" />
 			<div class="min-w-0">
-				<p class="font-semibold">Kemungkinan pengajuan ganda</p>
-				<p class="mt-0.5 text-muted">Pengajuan berikut memiliki struk atau data transaksi yang sama. Periksa sebelum memproses.</p>
+				<p class="font-semibold">Kemungkinan transaksi ganda pada {duplicateCount} item</p>
+				<p class="mt-0.5 text-muted">Ada struk atau data transaksi yang sama dengan item lain. Rinciannya ada di tiap item di bawah.</p>
 				<ul class="mt-2 space-y-1">
-					{#each item.duplicates as d (d.id)}
+					{#each Object.entries(item.duplicates ?? {}) as [itemId, matches] (itemId)}
 						<li class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-							<a href="/reimburse/{d.id}" class="code font-medium text-ink underline underline-offset-2">{d.code}</a>
-							<span class="rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-semibold text-warn">{DUPLICATE_REASON_LABEL[d.reason]}</span>
-							<span class="text-muted">{d.employee} · {formatDate(d.transaction_date)} · <span class="num">{formatRupiah(d.amount)}</span> · {STATUS_LABEL[d.status]}</span>
+							<span class="font-medium">Item {itemIndex(Number(itemId))}</span>
+							{#each matches as d (d.item_id)}
+								<span class="rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-semibold text-warn">{DUPLICATE_REASON_LABEL[d.reason]}</span>
+								<span class="text-muted">{d.same_claim ? `Item ${itemIndex(d.item_id)} di pengajuan ini` : d.code}</span>
+							{/each}
 						</li>
 					{/each}
 				</ul>
@@ -249,98 +237,26 @@
 	<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22.5rem] lg:items-start">
 		<div class="space-y-5">
 			<section class="panel reveal p-5 sm:p-6" style="--d: 200ms">
-				<div class="mb-4 flex items-center justify-between">
-					<h2 class="display text-xl text-ink">Bukti transaksi</h2>
-					{#if item.receipt && (!imgFailed || item.receipt.file_type === 'application/pdf')}
-						<a href="/api/receipts/{item.receipt.id}/file" target="_blank" rel="noopener"
-							class="group inline-flex items-center gap-1 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-							{item.receipt.file_type === 'application/pdf' ? 'Buka PDF' : 'Ukuran penuh'} <ArrowSquareOut size={14} class="transition-transform duration-200 group-hover:-translate-y-px group-hover:translate-x-px" />
-						</a>
-					{/if}
+				<div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+					<h2 class="display text-xl text-ink">Item pengeluaran</h2>
+					<span class="text-[13px] text-muted">{item.item_count} item · <span class="num font-medium text-ink">{formatRupiah(item.amount)}</span></span>
 				</div>
-				{#if item.receipt}
-					{#if item.receipt.file_type === 'application/pdf' && !imgFailed}
-						<a href="/api/receipts/{item.receipt.id}/file" target="_blank" rel="noopener"
-							class="group relative block overflow-hidden rounded-xl border border-line bg-white">
-							<img
-								src="/api/receipts/{item.receipt.id}/preview"
-								alt="Struk {item.code} (halaman pertama PDF)"
-								onerror={() => (imgFailed = true)}
-								class="max-h-[34rem] w-full object-contain transition-transform duration-700 ease-snap group-hover:scale-[1.025]"
-							/>
-							<span class="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[12px] font-medium text-on-primary shadow-float">
-								<FilePdf size={14} /> PDF
-							</span>
-						</a>
-					{:else if imgFailed}
-						<div class="grid place-items-center gap-2 rounded-xl border border-dashed border-line-strong py-14 text-sm text-faint">
-							<Receipt size={28} />
-							{item.receipt.file_type === 'application/pdf' ? 'Pratinjau PDF' : 'Gambar struk'} tidak dapat ditampilkan.
-						</div>
-					{:else}
-						<a href="/api/receipts/{item.receipt.id}/file" target="_blank" rel="noopener"
-							class="group block overflow-hidden rounded-xl border border-line bg-sunken">
-							<img
-								src="/api/receipts/{item.receipt.id}/file"
-								alt="Struk {item.code}"
-								onerror={() => (imgFailed = true)}
-								class="max-h-[34rem] w-full object-contain transition-transform duration-700 ease-snap group-hover:scale-[1.025]"
-							/>
-						</a>
-					{/if}
-					<p class="mt-2.5 text-[12px] text-muted">
-						<span class="code">{item.receipt.original_filename}</span> · {(item.receipt.file_size / 1024).toFixed(0)} KB
-					</p>
+				{#if canReturn}
+					<p class="mb-4 text-[12.5px] text-muted">Tandai item yang perlu diperbaiki, lalu pilih <span class="font-medium text-ink">Kembalikan untuk revisi</span>.</p>
+				{/if}
+				{#if item.items.length === 0}
+					<p class="text-sm text-faint">Belum ada item.</p>
 				{:else}
-					<p class="text-sm text-faint">Belum ada bukti transaksi.</p>
+					<div class="space-y-3">
+						{#each item.items as it, i (it.id)}
+							<div class="row-in" style="--d: {240 + Math.min(i, 8) * 50}ms">
+								<ItemView item={it} index={i} duplicates={item.duplicates?.[it.id] ?? []}
+									reviewable={canReturn} bind:flagNote={itemNotes[it.id]} />
+							</div>
+						{/each}
+					</div>
 				{/if}
 			</section>
-
-			{#if ocr}
-				<section class="panel reveal p-5 sm:p-6" style="--d: 240ms">
-					<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-						<h2 class="display text-xl text-ink">OCR vs diajukan</h2>
-						{#if ocr.status === 'completed'}
-							<span class="text-[12px] text-muted">
-								{item.ocr_confirmed ? 'Dikonfirmasi karyawan' : 'Belum dikonfirmasi'}{item.ocr_corrected ? ' · ada koreksi manual' : ''}
-							</span>
-						{/if}
-					</div>
-					{#if ocr.status === 'completed'}
-						<div class="overflow-x-auto">
-							<table class="table text-[13.5px]">
-								<thead><tr><th class="pl-0!">Field</th><th>Hasil OCR</th><th>Diajukan</th><th class="w-24"></th></tr></thead>
-								<tbody>
-									{#each compare as c, i (c.label)}
-										<tr class="row-in" style="--d: {280 + i * 60}ms">
-											<td class="pl-0! text-muted">{c.label}</td>
-											<td class="{c.ocr ? 'text-ink-2' : 'text-faint italic'} {c.label === 'Total' ? 'num' : ''}">
-												{c.ocr ?? 'tidak terbaca'}
-												{#if c.ocr && c.conf != null}
-													<span class="num ml-1 text-[11px] {c.conf < OCR_LOW_CONFIDENCE ? 'font-semibold text-warn' : 'text-faint'}"
-														title="Skor keyakinan OCR">{Math.round(c.conf * 100)}%</span>
-												{/if}
-											</td>
-											<td class="font-medium text-ink {c.label === 'Total' ? 'num' : ''}">{c.final ?? '-'}</td>
-											<td class="text-right">
-												{#if c.same}
-													<span class="inline-flex items-center gap-1 rounded-full bg-lime px-2 py-0.5 text-[11px] font-semibold text-on-lime"><Check size={11} weight="bold" /> Sama</span>
-												{:else if c.ocr}
-													<span class="inline-flex rounded-full bg-warn/15 px-2 py-0.5 text-[11px] font-semibold text-warn">Dikoreksi</span>
-												{:else}
-													<span class="inline-flex rounded-full bg-sunken px-2 py-0.5 text-[11px] font-medium text-muted">Manual</span>
-												{/if}
-											</td>
-										</tr>
-									{/each}
-								</tbody>
-							</table>
-						</div>
-					{:else}
-						<p class="text-[13.5px] text-muted">OCR gagal ({ocr.error ?? 'tidak diketahui'}); data diisi manual oleh karyawan.</p>
-					{/if}
-				</section>
-			{/if}
 
 			<section class="panel reveal p-5 sm:p-6" style="--d: 280ms">
 				<h2 class="display mb-5 text-xl text-ink">Riwayat</h2>
@@ -367,7 +283,7 @@
 										<span class="text-ink-2">{h.actor.name}</span> · {ROLE_LABEL[h.actor.role]}
 									</p>
 									{#if h.note}
-										<p class="mt-2 rounded-xl rounded-tl-sm bg-sunken px-3.5 py-2.5 text-[13.5px] text-ink">{h.note}</p>
+										<p class="mt-2 rounded-xl rounded-tl-sm bg-sunken px-3.5 py-2.5 text-[13.5px] whitespace-pre-line text-ink">{h.note}</p>
 									{/if}
 								</div>
 							</li>
@@ -408,6 +324,11 @@
 									{actions.some((a) => NOTE_REQUIRED.includes(a)) ? '· wajib untuk revisi/tolak' : '· opsional'}
 								</span>
 							</label>
+							{#if flagged.length}
+								<p class="mb-2 inline-flex items-center gap-1.5 rounded-full bg-warn/15 px-2.5 py-1 text-[12px] font-medium text-warn">
+									{flagged.length} item ditandai perlu revisi
+								</p>
+							{/if}
 							<textarea id="note" rows="3" class="input" bind:value={note} bind:this={noteEl}
 								placeholder="Tulis alasan atau catatan untuk karyawan…"></textarea>
 						</div>
@@ -442,11 +363,12 @@
 
 			<section class="panel reveal p-5" style="--d: 240ms">
 				<p class="eyebrow">Keperluan</p>
-				<p class="mt-2 text-[15px] leading-relaxed text-ink">{item.description}</p>
+				<p class="mt-2 text-[15px] leading-relaxed text-ink">{item.purpose}</p>
 				<dl class="mt-4 divide-y divide-line border-t border-line text-[13.5px]">
 					{@render row('Karyawan', item.employee.name)}
 					{@render row('Departemen', item.employee.department ?? '-')}
-					{@render row('Tanggal transaksi', formatDate(item.transaction_date))}
+					{@render row('Periode transaksi', formatDateRange(item.date_from, item.date_to))}
+					{@render row('Jumlah item', `${item.item_count} item`)}
 					{@render row('Dikirim', formatDate(item.submitted_at, true))}
 				</dl>
 			</section>

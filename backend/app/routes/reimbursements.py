@@ -1,10 +1,12 @@
 from datetime import date
+from decimal import Decimal
 
 from flask import Blueprint, g, jsonify, request
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from ..extensions import db
-from ..models import Category, Receipt, Reimbursement, Role, Status, User
+from ..models import (MAX_ITEMS, MAX_RECEIPTS_PER_ITEM, Category, Receipt, Reimbursement,
+                      ReimbursementItem, Role, Status, User)
 from ..services import duplicates
 from ..services.access import can_view, scoped_query
 from ..services.workflow import available_actions, transition
@@ -19,15 +21,20 @@ def apply_filters(q, args):
         q = q.filter(Reimbursement.status.in_(args["status"].split(",")))
     if args.get("category"):
         q = q.filter(Reimbursement.category == args["category"])
+    # Rentang tanggal: pengajuan yang punya minimal satu item di dalam rentang.
+    date_cond = []
     if d := parse_date(args.get("date_from"), "tanggal awal"):
-        q = q.filter(Reimbursement.transaction_date >= d)
+        date_cond.append(ReimbursementItem.transaction_date >= d)
     if d := parse_date(args.get("date_to"), "tanggal akhir"):
-        q = q.filter(Reimbursement.transaction_date <= d)
+        date_cond.append(ReimbursementItem.transaction_date <= d)
+    if date_cond:
+        q = q.filter(Reimbursement.items.any(and_(*date_cond)))
     if term := (args.get("q") or "").strip():
         like = f"%{term}%"
         q = q.join(Reimbursement.employee).filter(or_(
-            Reimbursement.code.ilike(like), Reimbursement.merchant.ilike(like),
-            Reimbursement.description.ilike(like), User.name.ilike(like)))
+            Reimbursement.code.ilike(like), Reimbursement.purpose.ilike(like), User.name.ilike(like),
+            Reimbursement.items.any(or_(ReimbursementItem.merchant.ilike(like),
+                                        ReimbursementItem.note.ilike(like)))))
     return q
 
 
@@ -38,35 +45,89 @@ def _get_visible(rid):
     return r
 
 
+def _item_error(n, message):
+    return ApiError(f"Item {n}: {message}")
+
+
+def _parse_item(n, raw):
+    if not isinstance(raw, dict):
+        raise _item_error(n, "Format item tidak valid.")
+    try:
+        tx_date = parse_date(raw.get("transaction_date"), "tanggal transaksi")
+        amount = parse_amount(raw.get("amount"))
+    except ApiError as e:
+        raise _item_error(n, e.message)
+    if tx_date is None:
+        raise _item_error(n, "Tanggal transaksi wajib diisi.")
+    if tx_date > date.today():
+        raise _item_error(n, "Tanggal transaksi tidak boleh di masa depan.")
+    if amount is None:
+        raise _item_error(n, "Nominal wajib diisi.")
+    receipt_ids = raw.get("receipt_ids") or []
+    if not isinstance(receipt_ids, list) or not all(isinstance(i, int) for i in receipt_ids):
+        raise _item_error(n, "Daftar struk tidak valid.")
+    if len(receipt_ids) > MAX_RECEIPTS_PER_ITEM:
+        raise _item_error(n, f"Maksimal {MAX_RECEIPTS_PER_ITEM} file bukti per item.")
+    return {
+        "id": raw.get("id"),
+        "merchant": (raw.get("merchant") or "").strip()[:200] or None,
+        "transaction_date": tx_date,
+        "amount": amount,
+        "note": (raw.get("note") or "").strip() or None,
+        "ocr_confirmed": bool(raw.get("ocr_confirmed")),
+        "receipt_ids": receipt_ids,
+    }
+
+
 def _apply_form(r, data):
     category = data.get("category")
     if category not in Category.ALL:
         raise ApiError("Kategori harus transportasi atau konsumsi.")
-    tx_date = parse_date(data.get("transaction_date"), "tanggal transaksi")
-    if tx_date is None:
-        raise ApiError("Tanggal transaksi wajib diisi.")
-    if tx_date > date.today():
-        raise ApiError("Tanggal transaksi tidak boleh di masa depan.")
-    amount = parse_amount(data.get("amount"))
-    if amount is None:
-        raise ApiError("Nominal wajib diisi.")
-    description = (data.get("description") or "").strip()
-    if not description:
-        raise ApiError("Keterangan pengeluaran wajib diisi.")
+    purpose = (data.get("purpose") or "").strip()
+    if not purpose:
+        raise ApiError("Keperluan pengajuan wajib diisi.")
+    raw_items = data.get("items") or []
+    if not isinstance(raw_items, list):
+        raise ApiError("Format item tidak valid.")
+    if len(raw_items) > MAX_ITEMS:
+        raise ApiError(f"Maksimal {MAX_ITEMS} item per pengajuan.")
+    parsed = [_parse_item(n, raw) for n, raw in enumerate(raw_items, 1)]
 
-    r.category, r.transaction_date, r.amount, r.description = category, tx_date, amount, description
-    r.merchant = (data.get("merchant") or "").strip()[:200] or None
-
-    receipt_id = data.get("receipt_id")
-    if receipt_id and (r.receipt is None or r.receipt.id != receipt_id):
-        receipt = db.session.get(Receipt, receipt_id)
-        if receipt is None or receipt.uploaded_by != g.user.id or receipt.reimbursement_id is not None:
+    # Struk yang dipakai: milik karyawan ini, dan belum terpasang ke pengajuan lain.
+    all_ids = [i for p in parsed for i in p["receipt_ids"]]
+    if len(all_ids) != len(set(all_ids)):
+        raise ApiError("Satu file struk hanya boleh dipakai pada satu item.")
+    receipts = {rc.id: rc for rc in Receipt.query.filter(Receipt.id.in_(all_ids))} if all_ids else {}
+    for rid in all_ids:
+        rc = receipts.get(rid)
+        if (rc is None or rc.uploaded_by != g.user.id
+                or (rc.item is not None and rc.item.reimbursement_id != r.id)):
             raise ApiError("Struk tidak valid.")
-        if r.receipt is not None:
-            # Struk lama tetap disimpan di storage, hanya dilepas dari pengajuan.
-            r.receipt.reimbursement_id = None
-            db.session.flush()
-        r.receipt = receipt
+
+    existing = {item.id: item for item in r.items}
+    items = []
+    for n, p in enumerate(parsed, 1):
+        if p["id"] is not None:
+            item = existing.get(p["id"])
+            if item is None:
+                raise _item_error(n, "Item tidak ditemukan pada pengajuan ini.")
+        else:
+            item = ReimbursementItem()
+        item.position = n - 1
+        item.merchant, item.transaction_date, item.amount = p["merchant"], p["transaction_date"], p["amount"]
+        item.note, item.ocr_confirmed = p["note"], p["ocr_confirmed"]
+        items.append((item, [receipts[i] for i in p["receipt_ids"]]))
+
+    # Struk yang tidak dipakai lagi tetap disimpan di storage, hanya dilepas dari item.
+    for item in r.items:
+        for rc in list(item.receipts):
+            if rc.id not in receipts:
+                rc.item = None
+    r.category, r.purpose = category, purpose
+    r.items = [item for item, _ in items]  # item yang tidak ada di payload ikut terhapus
+    for item, item_receipts in items:
+        item.receipts = item_receipts
+    r.amount = sum((item.amount for item in r.items), Decimal("0"))
 
 
 @bp.get("")
@@ -99,8 +160,7 @@ def _detail(r):
     data = r.to_dict(detail=True)
     data["actions"] = available_actions(g.user, r)
     # Hanya pengajuan yang boleh dilihat pengguna ini yang ditampilkan.
-    data["duplicates"] = [duplicates.to_dict(d, reason) for d, reason in duplicates.find_duplicates(r)
-                          if can_view(g.user, d)]
+    data["duplicates"] = duplicates.find_duplicates(r, lambda other: can_view(g.user, other))
     return data
 
 

@@ -6,6 +6,8 @@ from ..utils.errors import ApiError, parse_amount, parse_date
 
 S = Status
 
+RETURN_ACTIONS = {"admin_return", "approver_return"}
+
 # action -> (role yang boleh, status asal yang diizinkan, status tujuan, catatan wajib?)
 TRANSITIONS = {
     "submit":       ({Role.EMPLOYEE}, S.EDITABLE, S.SUBMITTED, False),
@@ -55,12 +57,22 @@ def transition(user, r, action, data):
         raise ApiError(f"Tindakan tidak dapat dilakukan pada status '{r.status}'.", 409)
 
     note = (data.get("note") or "").strip() or None
-    if note_required and not note:
+    item_notes = _item_notes(r, data) if action in RETURN_ACTIONS else {}
+    if note_required and not note and not item_notes:
         raise ApiError("Alasan / catatan wajib diisi.")
 
     if action == "submit":
-        _validate_before_submit(r, data)
+        _validate_before_submit(r)
         r.submitted_at = utcnow()
+        for item in r.items:
+            item.review_note = None
+    elif item_notes:
+        for item in r.items:
+            item.review_note = item_notes.get(item.id)
+        # Catatan per item juga disimpan di riwayat, karena review_note dihapus saat dikirim ulang.
+        lines = [f"• Item {n} ({item.merchant or '-'}): {item_notes[item.id]}"
+                 for n, item in enumerate(r.items, 1) if item.id in item_notes]
+        note = "\n".join(([note] if note else []) + lines)
     elif action == "process_payment":
         db.session.add(Payment(reimbursement=r, status="processing", processed_by=user.id,
                                amount=r.amount))
@@ -84,17 +96,39 @@ def transition(user, r, action, data):
     return r
 
 
-def _validate_before_submit(r, data):
-    if r.receipt is None:
-        raise ApiError("Bukti transaksi wajib dilampirkan.")
-    ocr = r.receipt.ocr_result
-    # Business Rule 19: hasil OCR wajib dikonfirmasi karyawan sebelum dikirim.
-    if ocr and ocr.status == "completed":
-        if not data.get("ocr_confirmed"):
-            raise ApiError("Konfirmasi bahwa Anda sudah memeriksa hasil OCR terhadap struk asli.")
-        r.ocr_confirmed = True
-        r.ocr_corrected = (
-            (ocr.merchant or None) != (r.merchant or None)
-            or ocr.transaction_date != r.transaction_date
-            or ocr.total_amount != r.amount
+def _item_notes(r, data):
+    """{item_id: catatan} dari payload `item_notes`; hanya item milik pengajuan ini."""
+    raw = data.get("item_notes") or {}
+    if not isinstance(raw, dict):
+        raise ApiError("Format catatan item tidak valid.")
+    ids = {item.id for item in r.items}
+    notes = {}
+    for key, value in raw.items():
+        try:
+            item_id = int(key)
+        except (TypeError, ValueError):
+            raise ApiError("Format catatan item tidak valid.")
+        if item_id not in ids:
+            raise ApiError("Catatan merujuk ke item yang bukan bagian pengajuan ini.")
+        if text := str(value or "").strip():
+            notes[item_id] = text
+    return notes
+
+
+def _validate_before_submit(r):
+    if not r.items:
+        raise ApiError("Tambahkan minimal satu item pengeluaran.")
+    for n, item in enumerate(r.items, 1):
+        if not item.receipts:
+            raise ApiError(f"Item {n}: bukti transaksi wajib dilampirkan.")
+        ocr = item.ocr_source()
+        if ocr is None:
+            continue
+        # Business Rule 19: hasil OCR wajib dikonfirmasi karyawan sebelum dikirim.
+        if not item.ocr_confirmed:
+            raise ApiError(f"Item {n}: konfirmasi bahwa Anda sudah memeriksa hasil OCR terhadap struk asli.")
+        item.ocr_corrected = (
+            (ocr.merchant or None) != (item.merchant or None)
+            or ocr.transaction_date != item.transaction_date
+            or ocr.total_amount != item.amount
         )

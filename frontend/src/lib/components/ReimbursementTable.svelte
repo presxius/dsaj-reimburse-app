@@ -10,7 +10,7 @@
 	import Segmented from './Segmented.svelte';
 	import Tabs from './Tabs.svelte';
 	import { api, query } from '#lib/services/api.ts';
-	import { ALL_STATUSES, CATEGORY_LABEL, STATUS_LABEL, formatDate, formatRupiah } from '#lib/labels.ts';
+	import { ALL_STATUSES, STATUS_LABEL, formatDateRange, formatRupiah, itemSummary } from '#lib/labels.ts';
 	import { notifyError } from '#lib/session.svelte.ts';
 	import type { Category, Reimbursement } from '#lib/types/index.ts';
 
@@ -118,7 +118,7 @@
 				<tr>
 					<th>Pengajuan</th>
 					{#if showEmployee}<th>Karyawan</th>{/if}
-					<th>Keterangan</th>
+					<th>Item</th>
 					<th>Tanggal</th>
 					<th class="text-right">Nominal</th>
 					<th>Status</th>
@@ -155,7 +155,7 @@
 									<CategoryIcon category={r.category} />
 									<div class="min-w-0">
 										<a class="block max-w-[15rem] truncate font-medium text-ink" href="/reimburse/{r.id}"
-											onclick={(e) => e.stopPropagation()}>{r.merchant ?? CATEGORY_LABEL[r.category]}</a>
+											onclick={(e) => e.stopPropagation()} title={r.purpose}>{r.purpose}</a>
 										<div class="code text-[12px] text-muted">{r.code}</div>
 									</div>
 								</div>
@@ -166,8 +166,8 @@
 									<div class="text-[12px] text-muted">{r.employee.department ?? ''}</div>
 								</td>
 							{/if}
-							<td class="max-w-[16rem] truncate text-ink-2" title={r.description}>{r.description}</td>
-							<td class="num whitespace-nowrap text-ink-2">{formatDate(r.transaction_date)}</td>
+							<td class="max-w-[16rem] truncate text-ink-2" title={r.merchants.join(', ')}>{itemSummary(r)}</td>
+							<td class="num whitespace-nowrap text-ink-2">{formatDateRange(r.date_from, r.date_to)}</td>
 							<td class="num text-right font-semibold whitespace-nowrap text-ink">{formatRupiah(r.amount)}</td>
 							<td><StatusBadge status={r.status} /></td>
 							<td>
@@ -201,11 +201,11 @@
 						<CategoryIcon category={r.category} />
 						<div class="min-w-0 flex-1">
 							<div class="flex items-baseline justify-between gap-3">
-								<span class="truncate font-medium text-ink">{r.merchant ?? CATEGORY_LABEL[r.category]}</span>
+								<span class="truncate font-medium text-ink">{r.purpose}</span>
 								<span class="num shrink-0 font-semibold text-ink">{formatRupiah(r.amount)}</span>
 							</div>
 							<div class="mt-0.5 truncate text-[12.5px] text-muted">
-								<span class="code">{r.code}</span> · {showEmployee ? r.employee.name : formatDate(r.transaction_date)}
+								<span class="code">{r.code}</span> · {showEmployee ? r.employee.name : formatDateRange(r.date_from, r.date_to)} · {r.item_count} item
 							</div>
 							<div class="mt-2"><StatusBadge status={r.status} /></div>
 						</div>

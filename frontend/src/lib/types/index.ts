@@ -69,15 +69,19 @@ export interface Receipt {
 	ocr: OcrResult | null;
 }
 
-/** Pengajuan lain yang kemungkinan memakai struk/transaksi yang sama. */
+/** Item lain (di pengajuan lain atau pengajuan yang sama) yang kemungkinan transaksi yang sama. */
 export interface DuplicateMatch {
+	/** id pengajuan */
 	id: number;
 	code: string;
 	status: Status;
 	employee: string;
+	item_id: number;
+	merchant: string | null;
 	transaction_date: string;
 	amount: number;
 	reason: 'same_file' | 'same_data';
+	same_claim: boolean;
 }
 
 export interface UploadedReceipt extends Receipt {
@@ -103,14 +107,30 @@ export interface Payment {
 	processed_by: string;
 }
 
+export interface ReimbursementItem {
+	id: number;
+	merchant: string | null;
+	transaction_date: string;
+	amount: number;
+	note: string | null;
+	ocr_confirmed: boolean;
+	ocr_corrected: boolean;
+	/** Catatan admin/atasan saat pengajuan dikembalikan. */
+	review_note: string | null;
+	receipts: Receipt[];
+}
+
 export interface Reimbursement {
 	id: number;
 	code: string;
 	category: Category;
-	merchant: string | null;
-	transaction_date: string;
-	description: string;
+	purpose: string;
+	/** Total semua item. */
 	amount: number;
+	item_count: number;
+	merchants: string[];
+	date_from: string | null;
+	date_to: string | null;
 	status: Status;
 	submitted_at: string | null;
 	created_at: string;
@@ -118,13 +138,12 @@ export interface Reimbursement {
 }
 
 export interface ReimbursementDetail extends Reimbursement {
-	ocr_confirmed: boolean;
-	ocr_corrected: boolean;
-	receipt: Receipt | null;
+	items: ReimbursementItem[];
 	history: HistoryEntry[];
 	payment: Payment | null;
 	actions?: Action[];
-	duplicates?: DuplicateMatch[];
+	/** Kemungkinan duplikat per item: { [item_id]: DuplicateMatch[] } */
+	duplicates?: Record<string, DuplicateMatch[]>;
 }
 
 export interface Bucket {

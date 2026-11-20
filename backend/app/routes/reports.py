@@ -41,7 +41,7 @@ def dashboard():
 
 def _report_items():
     q = apply_filters(scoped_query(g.user), request.args)
-    return q.order_by(Reimbursement.transaction_date.desc()).all()
+    return q.order_by(Reimbursement.created_at.desc()).all()
 
 
 def _row(r):
@@ -65,14 +65,18 @@ def export_report():
     items = _report_items()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Kode", "Karyawan", "Departemen", "Kategori", "Merchant", "Tanggal Transaksi",
-                "Keterangan", "Nominal", "Status", "Tanggal Pembayaran", "Referensi Pembayaran"])
+    # Satu baris per item (transaksi), agar bisa langsung dipakai bagian akuntansi.
+    w.writerow(["Kode", "Karyawan", "Departemen", "Kategori", "Keperluan", "Item", "Merchant",
+                "Tanggal Transaksi", "Catatan Item", "Nominal Item", "Total Pengajuan", "Status",
+                "Tanggal Pembayaran", "Referensi Pembayaran"])
     for r in items:
         row = _row(r)
-        w.writerow([row["code"], row["employee"]["name"], row["employee"]["department"] or "",
-                    row["category"], row["merchant"] or "", row["transaction_date"],
-                    row["description"], f"{row['amount']:.2f}", row["status"],
-                    row["payment_date"] or "", row["payment_reference"] or ""])
+        for n, item in enumerate(r.items, 1):
+            w.writerow([row["code"], row["employee"]["name"], row["employee"]["department"] or "",
+                        row["category"], row["purpose"], n, item.merchant or "",
+                        item.transaction_date.isoformat(), item.note or "", f"{item.amount:.2f}",
+                        f"{row['amount']:.2f}", row["status"],
+                        row["payment_date"] or "", row["payment_reference"] or ""])
     log_activity("report.export", detail=request.query_string.decode()[:500])
     db.session.commit()
     filename = f"laporan-reimburse-{date.today().isoformat()}.csv"

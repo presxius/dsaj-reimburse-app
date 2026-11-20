@@ -61,6 +61,16 @@
 	const greeting = hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 19 ? 'Selamat sore' : 'Selamat malam';
 	const today = now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
+	// Warna segmen bilah porsi kategori (titik di kartu memakai warna yang sama).
+	const CATEGORY_COLOR = { transport: 'bg-ink', consumption: 'bg-lime' } as const;
+	const shares = $derived(
+		(['transport', 'consumption'] as const).map((category) => {
+			const b = data?.by_category[category];
+			const amount = b?.amount ?? 0;
+			return { category, amount, count: b?.count ?? 0, share: data?.total_amount ? amount / data.total_amount : 0 };
+		})
+	);
+
 	const stages = $derived(STAGES.map((s) => ({ ...s, count: count(s.statuses) })).filter((s) => s.count > 0));
 	const waiting = $derived(count(queue.statuses));
 	const summary = $derived.by(() => {
@@ -122,22 +132,36 @@
 					<span class="num font-medium text-ink"><CountUp value={data.total_count} /></span> pengajuan tercatat
 				</p>
 			</div>
-			<div class="grid grid-cols-2 gap-3">
-				{#each ['transport', 'consumption'] as const as c (c)}
-					{@const b = data.by_category[c]}
-					{@const share = data.total_amount ? (b?.amount ?? 0) / data.total_amount : 0}
-					<div class="group rounded-xl bg-sunken/70 p-4 transition-colors duration-200 hover:bg-sunken">
-						<div class="flex items-center gap-2.5">
-							<CategoryIcon category={c} size="sm" />
-							<span class="text-[13px] font-medium text-ink-2">{CATEGORY_LABEL[c]}</span>
+			<div>
+				<!-- Satu bilah = total; tiap segmen = porsi nominal kategori. -->
+				<p class="eyebrow mb-2.5">Porsi per kategori</p>
+				<div class="flex h-2.5 gap-[3px] overflow-hidden rounded-full bg-line" aria-hidden="true">
+					{#each shares as s, i (s.category)}
+						{#if s.amount > 0}
+							<div class="grow-x h-full first:rounded-l-full last:rounded-r-full {CATEGORY_COLOR[s.category]}"
+								style="flex: {s.amount} 1 0%; --d: {400 + i * 90}ms"></div>
+						{/if}
+					{/each}
+				</div>
+				<div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-muted">
+					{#each shares as s (s.category)}
+						<span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-full {CATEGORY_COLOR[s.category]}"></span>{CATEGORY_LABEL[s.category]}
+							<span class="num font-medium text-ink">{Math.round(s.share * 100)}%</span></span
+						>
+					{/each}
+				</div>
+				<div class="mt-4 grid gap-3 sm:grid-cols-2">
+					{#each shares as s (s.category)}
+						<div class="group min-w-0 rounded-xl bg-sunken/70 p-4 transition-colors duration-200 hover:bg-sunken">
+							<div class="flex items-center gap-2.5">
+								<CategoryIcon category={s.category} size="sm" />
+								<span class="truncate text-[13px] font-medium text-ink-2">{CATEGORY_LABEL[s.category]}</span>
+							</div>
+							<div class="num mt-3 text-lg font-semibold text-ink">{formatRupiah(s.amount)}</div>
+							<div class="mt-0.5 text-[12px] text-muted">{s.count} pengajuan</div>
 						</div>
-						<div class="num mt-3 text-lg font-semibold text-ink">{formatRupiah(b?.amount ?? 0)}</div>
-						<div class="mt-0.5 text-[12px] text-muted">{b?.count ?? 0} pengajuan · {Math.round(share * 100)}%</div>
-						<div class="mt-3 h-1 overflow-hidden rounded-full bg-line">
-							<div class="grow-x h-full rounded-full bg-ink" style="width: {share * 100}%; --d: 400ms"></div>
-						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
 		</section>
 

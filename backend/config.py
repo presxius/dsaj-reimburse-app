@@ -12,7 +12,7 @@ class Config:
     UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", os.path.join(BASE_DIR, "storage", "receipts"))
     MAX_RECEIPT_SIZE = int(os.environ.get("MAX_RECEIPT_SIZE", 5 * 1024 * 1024))  # 5 MB
     MAX_CONTENT_LENGTH = MAX_RECEIPT_SIZE + 1024 * 1024
-    ALLOWED_RECEIPT_EXTENSIONS = {"jpg", "jpeg", "png"}
+    ALLOWED_RECEIPT_EXTENSIONS = {"jpg", "jpeg", "png", "pdf"}
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

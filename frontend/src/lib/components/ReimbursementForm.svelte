@@ -8,6 +8,7 @@
 	import Check from 'phosphor-svelte/lib/CheckIcon';
 	import WarningCircle from 'phosphor-svelte/lib/WarningCircleIcon';
 	import Car from 'phosphor-svelte/lib/CarIcon';
+	import FilePdf from 'phosphor-svelte/lib/FilePdfIcon';
 	import ForkKnife from 'phosphor-svelte/lib/ForkKnifeIcon';
 	import Segmented from './Segmented.svelte';
 	import AmountInput from './AmountInput.svelte';
@@ -46,6 +47,9 @@
 	let description = $state(init?.description ?? '');
 	let receipt = $state<Receipt | null>(init?.receipt ?? null);
 	let previewUrl = $state<string | null>(init?.receipt ? `/api/receipts/${init.receipt.id}/file` : null);
+	let previewName = $state(init?.receipt?.original_filename ?? '');
+	let previewIsPdf = $state(init?.receipt?.file_type === 'application/pdf');
+	let pdfThumbFailed = $state(false);
 	let useOcr = $state(true);
 	let uploading = $state(false);
 	let saving = $state<'draft' | 'submit' | null>(null);
@@ -81,8 +85,8 @@
 	}
 
 	async function handleFile(file: File) {
-		if (!['image/jpeg', 'image/png'].includes(file.type)) {
-			notify('Format file harus JPG, JPEG, atau PNG.', 'error');
+		if (!['image/jpeg', 'image/png', 'application/pdf'].includes(file.type)) {
+			notify('Format file harus JPG, JPEG, PNG, atau PDF.', 'error');
 			fileInput.value = '';
 			return;
 		}
@@ -92,6 +96,9 @@
 			return;
 		}
 		previewUrl = URL.createObjectURL(file);
+		previewName = file.name;
+		previewIsPdf = file.type === 'application/pdf';
+		pdfThumbFailed = false;
 		uploading = true;
 		ocrConfirmed = false;
 		fromOcr = {};
@@ -209,7 +216,7 @@
 			bind:this={fileInput}
 			id="receipt-file"
 			type="file"
-			accept="image/jpeg,image/png"
+			accept="image/jpeg,image/png,application/pdf"
 			class="peer sr-only"
 			onchange={(e) => {
 				const f = e.currentTarget.files?.[0];
@@ -234,22 +241,51 @@
 						<UploadSimple size={26} weight="bold" />
 					</span>
 					<span class="display mt-2 text-xl text-ink">
-						{dragging ? 'Lepaskan untuk mengunggah' : 'Tarik foto struk ke sini'}
+						{dragging ? 'Lepaskan untuk mengunggah' : 'Tarik foto atau PDF struk ke sini'}
 					</span>
 					<span class="text-sm text-muted">
 						atau <span class="font-medium text-ink underline decoration-line-strong decoration-2 underline-offset-4 transition-colors group-hover:decoration-lime-deep">pilih dari perangkat</span>
 					</span>
-					<span class="eyebrow mt-3">JPG · PNG · maks 5 MB</span>
+					<span class="eyebrow mt-3">JPG · PNG · PDF · maks 5 MB</span>
 				</label>
 			{:else}
 				<div class="relative overflow-hidden rounded-2xl border border-line bg-sunken {dragging ? 'ring-2 ring-ink' : ''}">
-					<img
-						src={previewUrl}
-						alt="Pratinjau struk"
-						class="max-h-[30rem] w-full object-contain transition-[filter,transform] duration-700 ease-snap {uploading
-							? 'scale-[1.015] brightness-[0.82] saturate-50'
-							: ''}"
-					/>
+					{#if previewIsPdf && receipt && !uploading && !pdfThumbFailed}
+						<!-- Thumbnail halaman pertama dibuat server setelah PDF tersimpan. -->
+						<a href={previewUrl} target="_blank" rel="noopener" class="block">
+							<img
+								src="/api/receipts/{receipt.id}/preview"
+								alt="Pratinjau halaman pertama PDF"
+								onerror={() => (pdfThumbFailed = true)}
+								class="max-h-[30rem] w-full bg-white object-contain"
+							/>
+							<span class="absolute bottom-3 left-3 inline-flex max-w-[calc(100%-1.5rem)] items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[12px] font-medium text-on-primary shadow-float">
+								<FilePdf size={14} class="shrink-0" />
+								<span class="truncate">{previewName}</span>
+							</span>
+						</a>
+					{:else if previewIsPdf}
+						<a
+							href={previewUrl}
+							target="_blank"
+							rel="noopener"
+							class="flex min-h-[20rem] flex-col items-center justify-center gap-3 px-6 text-center transition-[filter] duration-700 ease-snap {uploading
+								? 'brightness-[0.82] saturate-50'
+								: ''}"
+						>
+							<FilePdf size={56} class="text-muted" />
+							<span class="code max-w-full truncate text-sm text-ink">{previewName}</span>
+							<span class="text-[13px] text-muted underline underline-offset-4">Buka PDF</span>
+						</a>
+					{:else}
+						<img
+							src={previewUrl}
+							alt="Pratinjau struk"
+							class="max-h-[30rem] w-full object-contain transition-[filter,transform] duration-700 ease-snap {uploading
+								? 'scale-[1.015] brightness-[0.82] saturate-50'
+								: ''}"
+						/>
+					{/if}
 					{#if uploading && useOcr}<div class="scan-beam"></div>{/if}
 					{#if uploading}
 						<div class="absolute inset-x-0 bottom-4 flex justify-center" role="status">

@@ -4,10 +4,11 @@ File asli tidak diubah; fungsi ini bekerja pada salinan di memori.
 """
 
 
-def preprocess(path):
+def preprocess(source):
+    """`source`: path file gambar, atau array BGR (mis. halaman PDF yang sudah dirender)."""
     import cv2  # import di sini agar backend tetap jalan tanpa OpenCV
 
-    img = cv2.imread(path)
+    img = cv2.imread(source) if isinstance(source, str) else source
     if img is None:
         raise ValueError("Gambar tidak dapat dibaca.")
 

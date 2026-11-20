@@ -6,12 +6,15 @@ from flask import current_app
 
 from ..extensions import db
 from ..models import Receipt
+from ..ocr import pdf
 from ..utils.errors import ApiError
 
 _SIGNATURES = {
     b"\x89PNG\r\n\x1a\n": "image/png",
     b"\xff\xd8\xff": "image/jpeg",
+    b"%PDF-": "application/pdf",
 }
+_EXTENSIONS = {"image/png": "png", "image/jpeg": "jpg", "application/pdf": "pdf"}
 
 
 def _detect_mime(head):
@@ -29,7 +32,7 @@ def store_receipt(file_storage, user):
     filename = file_storage.filename
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in current_app.config["ALLOWED_RECEIPT_EXTENSIONS"]:
-        raise ApiError("Format file tidak didukung. Gunakan JPG, JPEG, atau PNG.")
+        raise ApiError("Format file tidak didukung. Gunakan JPG, JPEG, PNG, atau PDF.")
 
     content = file_storage.read()
     max_size = current_app.config["MAX_RECEIPT_SIZE"]
@@ -40,9 +43,13 @@ def store_receipt(file_storage, user):
 
     mime = _detect_mime(content[:8])
     if mime is None:
-        raise ApiError("Isi file bukan gambar JPG/PNG yang valid.")
+        raise ApiError("Isi file bukan gambar JPG/PNG atau PDF yang valid.")
+    if (ext == "pdf") != (mime == "application/pdf"):
+        raise ApiError("Ekstensi file tidak sesuai dengan isinya.")
+    if mime == "application/pdf" and not pdf.is_readable(content):
+        raise ApiError("PDF tidak dapat dibaca (rusak atau dilindungi password).")
 
-    storage_key = f"{uuid.uuid4().hex}.{'png' if mime == 'image/png' else 'jpg'}"
+    storage_key = f"{uuid.uuid4().hex}.{_EXTENSIONS[mime]}"
     folder = current_app.config["UPLOAD_FOLDER"]
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, storage_key), "wb") as f:

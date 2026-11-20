@@ -1,8 +1,10 @@
+import os
+
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 
 from ..extensions import db
 from ..models import OcrResult, Receipt, Role, utcnow
-from ..ocr import OcrUnavailable, run_ocr
+from ..ocr import OcrUnavailable, pdf, run_ocr
 from ..services import duplicates
 from ..services.access import can_view
 from ..services.receipts import receipt_path, store_receipt
@@ -48,21 +50,19 @@ def ocr_scan():
         ocr.confidence = fields.get("confidence")
         ocr.status = "completed"
         if not lines:
-            ocr.error = "Tidak ada teks yang terbaca pada gambar."
+            ocr.error = "Tidak ada teks yang terbaca pada struk."
     except OcrUnavailable as e:
         ocr.status, ocr.error = "failed", str(e)
     except Exception:  # OCR gagal tidak boleh menghalangi pengajuan manual (FR-038)
         current_app.logger.exception("OCR gagal untuk receipt %s", receipt.id)
-        ocr.status, ocr.error = "failed", "Gambar tidak dapat diproses OCR."
+        ocr.status, ocr.error = "failed", "Struk tidak dapat diproses OCR."
     ocr.processed_at = utcnow()
     log_activity("ocr.scan", "receipt", receipt.id, ocr.status)
     db.session.commit()
     return _upload_response(receipt)
 
 
-@bp.get("/receipts/<int:receipt_id>/file")
-@login_required
-def receipt_file(receipt_id):
+def _viewable_receipt(receipt_id):
     receipt = db.session.get(Receipt, receipt_id)
     if receipt is None:
         raise ApiError("Struk tidak ditemukan.", 404)
@@ -70,4 +70,25 @@ def receipt_file(receipt_id):
         receipt.reimbursement is not None and can_view(g.user, receipt.reimbursement))
     if not allowed:
         raise ApiError("Anda tidak berwenang melihat struk ini.", 403)
+    return receipt
+
+
+@bp.get("/receipts/<int:receipt_id>/file")
+@login_required
+def receipt_file(receipt_id):
+    receipt = _viewable_receipt(receipt_id)
     return send_file(receipt_path(receipt), mimetype=receipt.file_type, max_age=0)
+
+
+@bp.get("/receipts/<int:receipt_id>/preview")
+@login_required
+def receipt_preview(receipt_id):
+    """Thumbnail PNG halaman pertama struk PDF. Dibuat saat pertama diminta lalu disimpan."""
+    receipt = _viewable_receipt(receipt_id)
+    if receipt.file_type != "application/pdf":
+        raise ApiError("Pratinjau hanya tersedia untuk struk PDF.", 404)
+    path = receipt_path(receipt)
+    preview = f"{path}.preview.png"
+    if not os.path.exists(preview):
+        pdf.save_preview(path, preview)
+    return send_file(preview, mimetype="image/png", max_age=0)

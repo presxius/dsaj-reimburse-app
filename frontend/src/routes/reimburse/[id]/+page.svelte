@@ -4,6 +4,7 @@
 	import ArrowSquareOut from 'phosphor-svelte/lib/ArrowSquareOutIcon';
 	import Copy from 'phosphor-svelte/lib/CopyIcon';
 	import Check from 'phosphor-svelte/lib/CheckIcon';
+	import FilePdf from 'phosphor-svelte/lib/FilePdfIcon';
 	import PencilSimple from 'phosphor-svelte/lib/PencilSimpleIcon';
 	import Receipt from 'phosphor-svelte/lib/ReceiptIcon';
 	import WarningCircle from 'phosphor-svelte/lib/WarningCircleIcon';
@@ -250,18 +251,31 @@
 			<section class="panel reveal p-5 sm:p-6" style="--d: 200ms">
 				<div class="mb-4 flex items-center justify-between">
 					<h2 class="display text-xl text-ink">Bukti transaksi</h2>
-					{#if item.receipt && !imgFailed}
+					{#if item.receipt && (!imgFailed || item.receipt.file_type === 'application/pdf')}
 						<a href="/api/receipts/{item.receipt.id}/file" target="_blank" rel="noopener"
 							class="group inline-flex items-center gap-1 text-[13px] font-medium text-muted transition-colors hover:text-ink">
-							Ukuran penuh <ArrowSquareOut size={14} class="transition-transform duration-200 group-hover:-translate-y-px group-hover:translate-x-px" />
+							{item.receipt.file_type === 'application/pdf' ? 'Buka PDF' : 'Ukuran penuh'} <ArrowSquareOut size={14} class="transition-transform duration-200 group-hover:-translate-y-px group-hover:translate-x-px" />
 						</a>
 					{/if}
 				</div>
 				{#if item.receipt}
-					{#if imgFailed}
+					{#if item.receipt.file_type === 'application/pdf' && !imgFailed}
+						<a href="/api/receipts/{item.receipt.id}/file" target="_blank" rel="noopener"
+							class="group relative block overflow-hidden rounded-xl border border-line bg-white">
+							<img
+								src="/api/receipts/{item.receipt.id}/preview"
+								alt="Struk {item.code} (halaman pertama PDF)"
+								onerror={() => (imgFailed = true)}
+								class="max-h-[34rem] w-full object-contain transition-transform duration-700 ease-snap group-hover:scale-[1.025]"
+							/>
+							<span class="absolute bottom-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[12px] font-medium text-on-primary shadow-float">
+								<FilePdf size={14} /> PDF
+							</span>
+						</a>
+					{:else if imgFailed}
 						<div class="grid place-items-center gap-2 rounded-xl border border-dashed border-line-strong py-14 text-sm text-faint">
 							<Receipt size={28} />
-							Gambar struk tidak dapat ditampilkan.
+							{item.receipt.file_type === 'application/pdf' ? 'Pratinjau PDF' : 'Gambar struk'} tidak dapat ditampilkan.
 						</div>
 					{:else}
 						<a href="/api/receipts/{item.receipt.id}/file" target="_blank" rel="noopener"

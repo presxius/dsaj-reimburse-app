@@ -34,6 +34,7 @@ Perintah berguna:
 ```bash
 docker compose logs -f backend
 docker compose exec backend flask --app wsgi seed                           # akun contoh
+docker compose exec backend flask --app wsgi create-superadmin              # akun Super Admin pertama (production)
 ```
 
 ## Backup & restore
@@ -167,6 +168,22 @@ Setiap field hasil OCR membawa **skor keyakinan** (0–1, kolom `ocr_results.con
 skor PaddleOCR pada baris tempat nilai itu terbaca. Field dengan skor di bawah 90%
 (`OCR_LOW_CONFIDENCE` di `frontend/src/lib/labels.ts`) ditandai kuning di form dan halaman detail.
 
+### Struk PDF
+
+Struk boleh berupa JPG, PNG, atau PDF (maks 5 MB). Hanya **halaman pertama** PDF yang dibaca
+(`backend/app/ocr/pdf.py`, memakai pypdfium2):
+
+- **PDF digital** (e-receipt, invoice dari aplikasi): teks dibaca langsung dari lapisan teks PDF,
+  tanpa PaddleOCR, sehingga tetap berfungsi walau `WITH_OCR=0`. Skor keyakinannya 1.0.
+- **PDF hasil scan** (hanya berisi gambar): halaman pertama dirender ±1600 px lalu diproses OCR
+  seperti foto. Butuh paket OCR.
+
+PDF yang rusak atau dilindungi password ditolak saat diunggah.
+
+Pratinjau di form dan halaman detail memakai thumbnail PNG halaman pertama
+(`GET /api/receipts/<id>/preview`, lebar 800 px). Thumbnail dibuat saat pertama diminta lalu disimpan
+di samping file aslinya (`<storage_key>.preview.png`).
+
 ## Deteksi struk duplikat
 
 Pengajuan ditandai "kemungkinan ganda" (peringatan saja, tidak memblokir) bila ada pengajuan lain
@@ -205,6 +222,8 @@ Disepakati untuk versi ini dan mudah diubah:
 
 - Ganti `SECRET_KEY` dan set `SESSION_COOKIE_SECURE=1` (HTTPS).
   Jangan aktifkan `SEED_DEMO` (akun contoh memakai password yang diketahui umum).
+  Buat akun pertama dengan `flask --app wsgi create-superadmin`, lalu tambahkan pengguna lain dari menu
+  manajemen pengguna.
 - Login dikunci sementara per email setelah 5 kali gagal dalam 15 menit (`MAX_FAILED_LOGINS`,
   `LOCKOUT_WINDOW` di `backend/app/routes/auth.py`), dicatat sebagai `auth.login_failed` di log aktivitas.
   Percobaan saat terkunci tidak memperpanjang kunci.

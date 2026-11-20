@@ -43,4 +43,22 @@ def create_app(config_object="config.Config"):
         seed_data()
         click.echo("Seed selesai.")
 
+    @app.cli.command("create-superadmin")
+    @click.option("--email", prompt="Email")
+    @click.option("--name", prompt="Nama", default="Super Admin")
+    @click.password_option("--password", prompt="Password", confirmation_prompt="Ulangi password")
+    def create_superadmin(email, name, password):
+        """Buat akun Super Admin (untuk login pertama tanpa SEED_DEMO)."""
+        from .models import Role, User
+        email = email.strip().lower()
+        if len(password) < 8:
+            raise click.ClickException("Password minimal 8 karakter.")
+        if User.query.filter_by(email=email).first():
+            raise click.ClickException(f"Email {email} sudah terdaftar.")
+        user = User(name=name.strip(), email=email, role=Role.SUPER_ADMIN)
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"Super Admin {email} dibuat.")
+
     return app
